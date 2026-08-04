@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
+  <title id="title">hypertok browser race</title>
+  <desc id="description">A dark tokenization editor with live local race bars</desc>
+  <style>
+    @font-face { font-family: Martian; src: url("./fonts/MartianMono.ttf"); }
+    text { font-family: Martian, ui-monospace, Consolas, monospace; }
+  </style>
+  <rect width="1200" height="630" fill="#0c0e14"/>
+  <text x="92" y="82" fill="#e8e9ee" font-size="26" font-weight="600">hypertok</text>
+  <text x="245" y="82" fill="#7e8494" font-size="18">the fastest tokenization on the web</text>
+  <text x="92" y="132" fill="#7e8494" font-size="15">o200k · fetched · ready locally</text>
+
+  <rect x="92" y="164" width="1016" height="150" fill="#10131b" stroke="#202536" stroke-width="2"/>
+  <rect x="122" y="202" width="172" height="35" fill="#23304a"/>
+  <rect x="294" y="202" width="124" height="35" fill="#3b3022"/>
+  <rect x="418" y="202" width="246" height="35" fill="#20362f"/>
+  <rect x="664" y="202" width="142" height="35" fill="#32283f"/>
+  <rect x="806" y="202" width="174" height="35" fill="#3b2635"/>
+  <text x="122" y="228" fill="#e8e9ee" font-size="23">Race exact tokens on your own text.</text>
+  <text x="122" y="274" fill="#7e8494" font-size="16">196 tokens · measured locally</text>
+
+  <text x="92" y="370" fill="#e8e9ee" font-size="19">hypertok</text>
+  <text x="1108" y="370" fill="#7e8494" font-size="15" text-anchor="end">live MB/s</text>
+  <rect x="92" y="384" width="1016" height="8" fill="#1a1f2d"/>
+  <rect x="92" y="384" width="1016" height="8" fill="#e8e9ee"/>
+
+  <text x="92" y="438" fill="#4a5160" font-size="19">fastest rival</text>
+  <text x="1108" y="438" fill="#7e8494" font-size="15" text-anchor="end">live MB/s</text>
+  <rect x="92" y="452" width="1016" height="8" fill="#1a1f2d"/>
+  <rect x="92" y="452" width="514" height="8" fill="#4a5160"/>
+
+  <text x="92" y="520" fill="#e8e9ee" font-size="30">outputs match</text>
+  <text x="92" y="558" fill="#7e8494" font-size="16">steady-state encoding · all assets stay in your browser</text>
+</svg>

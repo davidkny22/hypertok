@@ -1,0 +1,9 @@
+{
+  "maxDomContentLoadedMs": 1000,
+  "maxReadyMs": 3000,
+  "maxInitialResponseBytes": 12000000,
+  "maxInitialRequests": 12,
+  "maxShellBytes": 40000,
+  "maxAccessibilityViolations": 0,
+  "maxExternalRequests": 0
+}
