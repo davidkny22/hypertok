@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Run hypertok in your browser and race it against the incumbents on your own text.">
+<meta name="theme-color" content="#0c0e14">
+<meta property="og:type" content="website">
+<meta property="og:url" content="./">
+<meta property="og:title" content="hypertok">
+<meta property="og:description" content="The fastest tokenization on the web, measured live on your machine.">
+<meta property="og:image" content="./preview.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="hypertok: the fastest tokenization on the web">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="hypertok">
+<meta name="twitter:description" content="The fastest tokenization on the web, measured live on your machine.">
+<meta name="twitter:image" content="./preview.png">
+<meta name="twitter:image:alt" content="hypertok: the fastest tokenization on the web">
+<link rel="canonical" href="./">
+<link rel="icon" href="./preview.svg" type="image/svg+xml">
+<title>hypertok</title>
+<style>
+  @font-face {
+    font-family: "Martian Mono";
+    src: url("./fonts/MartianMono.ttf") format("truetype");
+    font-weight: 100 800;
+    font-display: swap;
+  }
+  :root {
+    --bg: #0c0e14;
+    --panel: #10131b;
+    --track: #1a1f2d;
+    --ink: #e8e9ee;
+    --quiet: #7e8494;
+    --hairline: #202536;
+    --us: #e8e9ee;
+    --them: #4a5160;
+    --tint-us: rgba(232, 233, 238, 0.13);
+    --tint-them: rgba(232, 233, 238, 0.065);
+    --grotesk: "Martian Mono", ui-monospace, Menlo, Consolas, monospace;
+    --mono: "Martian Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--ink);
+    max-width: 62rem;
+    margin: 0 auto;
+    padding: 40px 24px 28px;
+  }
+  a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+  a:hover { background: rgba(232, 233, 238, 0.08); }
+  a:focus-visible, button:focus-visible, [contenteditable]:focus-visible {
+    outline: 2px solid var(--ink); outline-offset: 2px;
+  }
+  header {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 16px; flex-wrap: wrap;
+    margin-bottom: 26px;
+  }
+  .name {
+    display: inline;
+    font-family: var(--grotesk);
+    font-size: 18px; font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .claim { font-family: var(--grotesk); color: var(--quiet); }
+  .receipt {
+    font-size: 13px;
+    color: var(--quiet);
+    margin-bottom: 12px;
+    min-height: 21px;
+  }
+  .receipt b { color: var(--ink); font-weight: 400; }
+  .receipt .ready { color: var(--ink); transition: opacity 120ms ease; }
+  @media (prefers-reduced-motion: reduce) { .receipt .ready { transition: none; } }
+  .vocab {
+    font: inherit; color: var(--ink);
+    background: none; border: none; cursor: pointer;
+    border-bottom: 1px dotted var(--quiet);
+    padding: 0;
+  }
+  .vocab:hover { border-bottom-color: var(--ink); }
+  .vocab:disabled { cursor: wait; color: var(--quiet); }
+  .editor {
+    position: relative;
+    border: 1px solid var(--hairline);
+    background: var(--panel);
+    min-height: 8em;
+    max-height: 30vh;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #2c3342 transparent;
+  }
+  .layer {
+    font: inherit; line-height: inherit;
+    padding: 14px 16px;
+    white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;
+    min-height: inherit;
+  }
+  #input {
+    position: relative; z-index: 2;
+    width: 100%;
+    color: transparent;
+    caret-color: var(--ink);
+    background: transparent;
+    outline-offset: -2px;
+  }
+  #paint {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 1;
+    color: var(--ink);
+  }
+  #paint span.t0 { background: rgba(96, 165, 250, 0.20); }
+  #paint span.t1 { background: rgba(240, 166, 58, 0.18); }
+  #paint span.t2 { background: rgba(52, 211, 153, 0.16); }
+  #paint span.t3 { background: rgba(196, 144, 250, 0.18); }
+  #paint span.t4 { background: rgba(244, 114, 182, 0.16); }
+  #input:empty::before {
+    content: "type or paste anything";
+    color: var(--quiet);
+  }
+  .chip {
+    position: fixed; z-index: 3;
+    font-size: 12px;
+    background: var(--ink); color: var(--bg);
+    padding: 1px 7px;
+    pointer-events: none;
+    display: none;
+  }
+  .status {
+    font-size: 13px;
+    color: var(--quiet);
+    margin-top: 10px;
+    min-height: 21px;
+  }
+  .status b { color: var(--ink); font-weight: 400; }
+  .race { margin-top: 20px; min-height: 21px; font-size: 13px; color: var(--quiet); }
+  .lane { margin-bottom: 11px; }
+  .lane-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 12px;
+    margin-bottom: 3px;
+  }
+  .lane-name { font-family: var(--grotesk); font-size: 14px; }
+  .lane.us .lane-name { color: var(--us); }
+  .lane.them .lane-name { color: var(--them); }
+  .lane-nums { font-size: 13px; color: var(--quiet); }
+  .lane-nums b { color: var(--ink); font-weight: 400; }
+  .lane-track { height: 6px; background: var(--track); }
+  .lane-fill {
+    height: 100%;
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+  .lane.us .lane-fill { background: var(--us); }
+  .lane.them .lane-fill { background: var(--them); }
+  .lane-fill.run {
+    transform: scaleX(var(--w, 1));
+    transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lane-fill { transform: scaleX(var(--w, 1)); }
+    .lane-fill.run { transition: none; }
+  }
+  .verdict { margin-top: 14px; }
+  .mult {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 44px;
+    font-weight: 500;
+    line-height: 1.1;
+    color: var(--ink);
+  }
+  .mult-sub { font-family: var(--grotesk); font-size: 14px; color: var(--ink); margin-top: 4px; }
+  .match { font-size: 13px; color: var(--quiet); margin-top: 6px; }
+  .samples {
+    font-size: 13px;
+    margin-top: 22px;
+    color: var(--quiet);
+  }
+  .samples button {
+    font: inherit; color: var(--ink);
+    background: none; border: none; cursor: pointer;
+    text-decoration: underline; text-underline-offset: 3px;
+    padding: 0;
+  }
+  .samples button:hover { background: rgba(232, 233, 238, 0.08); }
+  footer {
+    font-size: 13px;
+    color: var(--quiet);
+    margin-top: 26px;
+    padding-top: 10px;
+    border-top: 1px solid var(--hairline);
+  }
+  footer a { color: var(--quiet); }
+  footer a:hover { color: var(--ink); }
+  .sep { color: var(--hairline); padding: 0 2px; }
+</style>
+</head>
+<body>
+<header>
+  <div><h1 class="name">hypertok</h1> <span class="claim">&nbsp;the fastest tokenization on the web</span></div>
+  <div><a href="https://github.com/davidkny22/hypertok">github</a></div>
+</header>
+
+<main>
+<div class="receipt" id="receipt" aria-live="polite"></div>
+
+<div class="editor">
+  <div class="layer" id="paint" aria-hidden="true"></div>
+  <div class="layer" id="input" contenteditable="plaintext-only" role="textbox"
+       aria-multiline="true" aria-describedby="status" spellcheck="false"
+       aria-label="text to tokenize"></div>
+</div>
+
+<div class="status" id="status" aria-live="polite"></div>
+
+<div class="race" id="race" aria-live="polite"></div>
+
+<div class="samples">
+  try:
+  <button data-s="english">english</button><span class="sep">&middot;</span><button data-s="chinese">中文</button><span class="sep">&middot;</span><button data-s="code">code</button><span class="sep">&middot;</span><button data-s="emoji">emoji</button>
+</div>
+</main>
+
+<footer>
+  descended from <a href="https://github.com/marcelroed/gigatoken">gigatoken</a> by Marcel R&oslash;d
+  <span class="sep">&middot;</span> <a href="./README.md#validation-and-benchmarks">benchmark</a>
+  <span class="sep">&middot;</span> <a href="https://www.npmjs.com/package/hypertok">npm</a>
+  <span class="sep">&middot;</span> MIT
+</footer>
+
+<div class="chip" id="chip" role="tooltip"></div>
+<script type="module" src="./app.mjs"></script>
+</body>
+</html>

@@ -1,0 +1,351 @@
+{
+  "schemaVersion": 1,
+  "profiles": {
+    "quick": {
+      "includes": [],
+      "commands": [
+        "suite-manifest",
+        "root-shipping-tests",
+        "converter-tests",
+        "format-tests",
+        "hash-tests",
+        "javascript-unit-tests",
+        "core-types",
+        "shim-types",
+        "unicode-table-identity"
+      ]
+    },
+    "artifacts": {
+      "includes": [],
+      "commands": [
+        "build-execution-artifacts",
+        "execution-artifact-manifest"
+      ]
+    },
+    "correctness": {
+      "includes": [],
+      "commands": [
+        "overlap-parity",
+        "hash-portability",
+        "build-execution-artifacts",
+        "execution-artifact-manifest",
+        "feature-composition",
+        "oracle-parity",
+        "simd-parity",
+        "reserved-policy",
+        "shim-fidelity",
+        "build-browser-fixtures",
+        "tier-parity",
+        "tier-switch",
+        "decode-round-trip",
+        "starts-fidelity"
+      ]
+    },
+    "release": {
+      "includes": ["quick", "artifacts"],
+      "commands": [
+        "prepare-release-package",
+        "core-package-install",
+        "release-artifact",
+        "configuration-contract",
+        "publish-independence",
+        "build-demo",
+        "demo-static",
+        "demo-browser",
+        "demo-throughput"
+      ]
+    },
+    "mutation": {
+      "includes": ["artifacts"],
+      "commands": ["mutation-contracts"]
+    }
+  },
+  "commands": [
+    {
+      "id": "suite-manifest",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": ["tests/suites/verify_manifest.mjs"]
+    },
+    {
+      "id": "root-shipping-tests",
+      "cwd": ".",
+      "executable": "cargo",
+      "arguments": [
+        "test",
+        "--locked",
+        "--no-default-features",
+        "--features",
+        "portable-json,wasm-binding,htk,sentencepiece-core,source-loaders,opt-marshalling,opt-chunk-prescan,opt-scan-two-phase,opt-level-select,opt-cold-diet,opt-fused-pair-ranks,opt-compact-ranks,opt-decode-assembly",
+        "--lib",
+        "--tests",
+        "--",
+        "--skip",
+        "_owt",
+        "--skip",
+        "owt_tests::",
+        "--skip",
+        "basic_tokenization",
+        "--skip",
+        "test_merges_from_vocab",
+        "--skip",
+        "test_pretokenizer_ts",
+        "--skip",
+        "test_safe_split_ranges_pretoken_equivalent"
+      ]
+    },
+    {
+      "id": "converter-tests",
+      "cwd": ".",
+      "executable": "cargo",
+      "arguments": ["test", "--locked", "--manifest-path", "hypertok-converter/Cargo.toml"]
+    },
+    {
+      "id": "format-tests",
+      "cwd": ".",
+      "executable": "cargo",
+      "arguments": ["test", "--locked", "--manifest-path", "hypertok-format/Cargo.toml"]
+    },
+    {
+      "id": "hash-tests",
+      "cwd": ".",
+      "executable": "cargo",
+      "arguments": ["test", "--locked", "--all-features", "--manifest-path", "hypertok-hash/Cargo.toml"]
+    },
+    {
+      "id": "javascript-unit-tests",
+      "cwd": "hypertok-js",
+      "executable": "node",
+      "arguments": [
+        "--test",
+        "tests/core-package.test.mjs",
+        "tests/decode-assembly.test.mjs",
+        "tests/decode-boundary.test.mjs",
+        "tests/decode-composed.test.mjs",
+        "tests/decode-hotstrings.test.mjs",
+        "tests/decode-table.test.mjs",
+        "tests/runtime-decode-wiring.test.mjs",
+        "tests/public-decode-config.test.mjs",
+        "tests/huggingface-lazy-shim.test.mjs"
+      ]
+    },
+    {
+      "id": "core-types",
+      "cwd": ".",
+      "executable": "npm.cmd",
+      "arguments": ["--prefix", "hypertok-js", "run", "test:core-types"]
+    },
+    {
+      "id": "shim-types",
+      "cwd": ".",
+      "executable": "npm.cmd",
+      "arguments": ["--prefix", "hypertok-js", "run", "test:shim-types"]
+    },
+    {
+      "id": "unicode-table-identity",
+      "cwd": ".",
+      "executable": "cargo",
+      "arguments": [
+        "run",
+        "--locked",
+        "--manifest-path",
+        "tools/unicode-table-gen/Cargo.toml",
+        "--bin",
+        "verify"
+      ]
+    },
+    {
+      "id": "mutation-contracts",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": ["tests/mutations/run.mjs"]
+    },
+    {
+      "id": "build-execution-artifacts",
+      "cwd": ".",
+      "executable": "powershell",
+      "arguments": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "hypertok-js/tests/build_execution_artifacts.ps1"
+      ]
+    },
+    {
+      "id": "execution-artifact-manifest",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": ["tests/suites/verify_artifact_manifest.mjs"]
+    },
+    {
+      "id": "feature-composition",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": ["tests/suites/verify_feature_composition.mjs"]
+    },
+    {
+      "id": "reserved-policy",
+      "cwd": ".",
+      "executable": "powershell",
+      "arguments": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "tests/reserved-policy-core/verify.ps1"
+      ]
+    },
+    {
+      "id": "oracle-parity",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": ["hypertok-js/tests/verify_oracle_parity.mjs"]
+    },
+    {
+      "id": "simd-parity",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": ["tests/suites/verify_simd_parity.mjs"]
+    },
+    {
+      "id": "shim-fidelity",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": ["hypertok-js/tests/verify_shim_fidelity.mjs"]
+    },
+    {
+      "id": "build-browser-fixtures",
+      "cwd": ".",
+      "executable": "powershell",
+      "arguments": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "hypertok-js/tests/build_browser_fixtures.ps1"
+      ]
+    },
+    {
+      "id": "tier-parity",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": ["hypertok-js/tests/verify_tier_parity.mjs"]
+    },
+    {
+      "id": "tier-switch",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": ["hypertok-js/tests/verify_tier_switch.mjs"]
+    },
+    {
+      "id": "decode-round-trip",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": ["hypertok-js/tests/verify_decode_roundtrip.mjs"]
+    },
+    {
+      "id": "starts-fidelity",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": ["hypertok-js/tests/verify_starts_fidelity.mjs"]
+    },
+    {
+      "id": "overlap-parity",
+      "cwd": ".",
+      "executable": "powershell",
+      "arguments": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "tests/overlap-parity/verify.ps1"
+      ]
+    },
+    {
+      "id": "hash-portability",
+      "cwd": ".",
+      "executable": "powershell",
+      "arguments": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "tests/hash-portability/verify.ps1",
+        "-OutputDirectory",
+        "results/correctness-suite/hash-portability"
+      ]
+    },
+    {
+      "id": "prepare-release-package",
+      "cwd": ".",
+      "executable": "powershell",
+      "arguments": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "hypertok-js/build_package.ps1"
+      ]
+    },
+    {
+      "id": "core-package-install",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": ["hypertok-js/tests/verify_core_package.mjs"]
+    },
+    {
+      "id": "release-artifact",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": ["tests/release-readiness/verify_release_artifact.mjs"]
+    },
+    {
+      "id": "configuration-contract",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": ["tests/release-readiness/verify_configuration.mjs"]
+    },
+    {
+      "id": "publish-independence",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": ["tests/publish-independence/verify.mjs"]
+    },
+    {
+      "id": "build-demo",
+      "cwd": ".",
+      "executable": "powershell",
+      "arguments": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "demo/build.ps1"
+      ]
+    },
+    {
+      "id": "demo-static",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": [
+        "--test",
+        "tests/demo/span_map.test.mjs",
+        "tests/demo/static_artifact.test.mjs",
+        "tests/demo/wasm_launch_smoke.test.mjs"
+      ]
+    },
+    {
+      "id": "demo-browser",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": ["tests/demo/verify_release_budgets.mjs"]
+    },
+    {
+      "id": "demo-throughput",
+      "cwd": ".",
+      "executable": "node",
+      "arguments": ["tests/demo/verify_demo_throughput.mjs"]
+    }
+  ]
+}

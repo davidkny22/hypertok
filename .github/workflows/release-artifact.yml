@@ -1,0 +1,114 @@
+name: Release artifact verification
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "README.md"
+      - "LICENSE"
+      - "NOTICE"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - ".cargo/**"
+      - "benches/**"
+      - "examples/**"
+      - "hypertok-*/**"
+      - "src/**"
+      - "demo/**"
+      - "tests/**"
+      - "tools/**"
+      - ".github/**"
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "README.md"
+      - "LICENSE"
+      - "NOTICE"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - ".cargo/**"
+      - "benches/**"
+      - "examples/**"
+      - "hypertok-*/**"
+      - "src/**"
+      - "demo/**"
+      - "tests/**"
+      - "tools/**"
+      - ".github/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-runtime-package:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            hypertok-js/package-lock.json
+            benches/package-lock.json
+
+      - name: Install Python oracle dependency
+        run: pip install tokenizers tiktoken sentencepiece
+
+      - name: Install JavaScript development dependencies
+        shell: pwsh
+        run: |
+          npm ci --prefix hypertok-js
+          npm ci --prefix benches
+
+      - name: Install Rust toolchains and targets
+        shell: pwsh
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal
+          rustup target add wasm32-unknown-unknown --toolchain stable-x86_64-pc-windows-msvc
+          rustup toolchain install nightly-2025-11-15-x86_64-pc-windows-msvc --profile minimal --component rust-src
+          rustup target add wasm32-unknown-unknown --toolchain nightly-2025-11-15-x86_64-pc-windows-msvc
+
+      - name: Install matching wasm-bindgen CLI
+        run: cargo +stable-x86_64-pc-windows-msvc install wasm-bindgen-cli --version 0.2.125 --locked
+
+      - name: Run the quick suite
+        shell: pwsh
+        run: ./tests/run.ps1 quick
+
+      - name: Run the correctness suite
+        shell: pwsh
+        run: ./tests/run.ps1 correctness
+
+      - name: Run the mutation suite
+        shell: pwsh
+        run: ./tests/run.ps1 mutation
+
+      - name: Run the release suite
+        shell: pwsh
+        run: ./tests/run.ps1 release
+
+      - name: Run the public benchmark smoke
+        shell: pwsh
+        working-directory: benches
+        run: npm.cmd run benchmark:smoke
+
+      - name: Pack the verified artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          npm.cmd pack ./hypertok-js --pack-destination dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hypertok-package
+          path: dist/hypertok-*.tgz
+          if-no-files-found: error
+          retention-days: 14

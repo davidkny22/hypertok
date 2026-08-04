@@ -1,0 +1,10 @@
+Mistral tekken vocabulary
+
+Source: https://huggingface.co/mistralai/Ministral-3-3B-Instruct-2512
+Source revision: b35d4dfe56c142746f54dbd64f579faab2744308
+Source SHA-256: 99cf274236c60277fcfad861a5a1007518687ad06ba8938760f50b55ffa0b1ef
+HTK file SHA-256: 0f3aaad13e639abe29323c87e75c08159e1fa9d34f96e0b519cf189bfc62f763
+
+The source model card declares Apache License 2.0 and states that the model must not be used in a
+manner that infringes, misappropriates, or otherwise violates any third party's rights, including
+intellectual property rights. This package is not affiliated with or endorsed by Mistral AI.

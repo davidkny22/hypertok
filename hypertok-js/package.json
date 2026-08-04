@@ -1,0 +1,107 @@
+{
+  "name": "hypertok",
+  "version": "0.1.2",
+  "description": "The fastest tokenizer on the web. Exact token ids for any BPE or SentencePiece vocabulary, in browsers and Node.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "files": [
+    "src/decode-assembly.mjs",
+    "src/decode-boundary.mjs",
+    "src/decode-composed.mjs",
+    "src/decode-hotstrings.mjs",
+    "src/decode-latin1.mjs",
+    "src/decode-memo.mjs",
+    "src/decode-run-cache.mjs",
+    "src/decode-table.mjs",
+    "src/huggingface-shim.mjs",
+    "src/huggingface-lazy-shim.mjs",
+    "src/index.mjs",
+    "src/optimization-config.mjs",
+    "src/shared-controller.mjs",
+    "src/shim-runtime.mjs",
+    "src/tier-runtime.mjs",
+    "src/tier-worker.mjs",
+    "src/tiktoken-shim.mjs",
+    "types",
+    "wasm",
+    "README.md",
+    "SHIMS.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "import": "./src/index.mjs",
+      "default": "./src/index.mjs"
+    },
+    "./tiktoken": {
+      "types": "./types/tiktoken-shim.d.ts",
+      "import": "./src/tiktoken-shim.mjs",
+      "default": "./src/tiktoken-shim.mjs"
+    },
+    "./huggingface": {
+      "types": "./types/huggingface-shim.d.ts",
+      "import": "./src/huggingface-shim.mjs",
+      "default": "./src/huggingface-shim.mjs"
+    },
+    "./huggingface-lazy": {
+      "types": "./types/huggingface-lazy-shim.d.ts",
+      "import": "./src/huggingface-lazy-shim.mjs",
+      "default": "./src/huggingface-lazy-shim.mjs"
+    }
+  },
+  "scripts": {
+    "build:package": "powershell -NoProfile -ExecutionPolicy Bypass -File build_package.ps1",
+    "build:test:vite": "vite build --config tests/bundlers/vite.config.mjs",
+    "build:test:webpack": "webpack --config tests/bundlers/webpack.config.mjs",
+    "build:test:mutation:reorder": "vite build --config tests/bundlers/vite.reorder.config.mjs",
+    "build:test:mutation:corrupt": "vite build --config tests/bundlers/vite.corrupt.config.mjs",
+    "build:test:mutation:transfer-corrupt": "vite build --config tests/bundlers/vite.transfer-corrupt.config.mjs",
+    "build:test:mutation:source-digest": "vite build --config tests/bundlers/vite.source-digest.config.mjs",
+    "build:test:mutation:source-rebuild": "vite build --config tests/bundlers/vite.source-rebuild.config.mjs",
+    "build:test:mutation:pool-reload": "vite build --config tests/bundlers/vite.pool-reload.config.mjs",
+    "build:test:mutation:resident-replace": "vite build --config tests/bundlers/vite.resident-replace.config.mjs",
+    "build:test:mutation:decode-drop": "vite build --config tests/bundlers/vite.decode-drop.config.mjs",
+    "test:core-package": "node tests/verify_core_package.mjs",
+    "test:core-types": "tsc --project tests/tsconfig.core.json",
+    "test:shim-fidelity": "node tests/verify_shim_fidelity.mjs",
+    "test:shim-types": "tsc --project tests/tsconfig.shims.json"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "acorn": "^8.18.0",
+    "axe-core": "^4.10.3",
+    "playwright-core": "^1.62.0",
+    "typescript": "5.9.3",
+    "vite": "8.2.0",
+    "webpack": "5.109.2",
+    "webpack-cli": "7.2.2"
+  },
+  "keywords": [
+    "tokenizer",
+    "tokenization",
+    "tiktoken",
+    "bpe",
+    "sentencepiece",
+    "llm",
+    "gpt",
+    "openai",
+    "o200k",
+    "huggingface",
+    "token-counting",
+    "wasm",
+    "webassembly"
+  ],
+  "homepage": "https://davidkny22.github.io/hypertok/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/davidkny22/hypertok.git"
+  },
+  "bugs": {
+    "url": "https://github.com/davidkny22/hypertok/issues"
+  }
+}

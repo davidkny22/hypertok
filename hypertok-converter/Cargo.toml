@@ -1,0 +1,19 @@
+[package]
+name = "hypertok-converter"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+base64 = "=0.22.1"
+hypertok-format = { path = "../hypertok-format" }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.150"
+sha2 = "=0.10.9"
+
+[[example]]
+name = "sentencepiece-fixture"
+path = "../tests/release-readiness/fixture-builder/src/main.rs"
+
+[workspace]

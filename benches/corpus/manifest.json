@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "frozen_at": "2026-07-30",
+  "workloads": [
+    {
+      "id": "english-prose",
+      "role": "arena",
+      "label": "English prose",
+      "path": "english-prose.txt",
+      "bytes": 152089,
+      "sha256": "7467306ee0feed4971260f3c87421154a05be571d944e9cb021a5713700c38f0",
+      "source": {
+        "url": "https://corpus.canterbury.ac.nz/resources/cantrbry.zip",
+        "archive_member": "alice29.txt",
+        "archive_bytes": 733976,
+        "archive_sha256": "c44b686dfc137e74aba4db0540e5d6568cb09e270ba8f8411d2f9df24f39a1a6",
+        "revision": "last-modified=2007-07-02T01:45:57Z"
+      }
+    },
+    {
+      "id": "chinese",
+      "role": "arena",
+      "label": "Chinese",
+      "path": "chinese.txt",
+      "bytes": 592645,
+      "sha256": "7e0070474a6cc0cdddb13e42365caeeaa6b4032c2587841885557ff616325ffe",
+      "source": {
+        "url": "https://www.gutenberg.org/ebooks/26904.txt.utf-8",
+        "title": "Tian Bao Tu",
+        "revision": "ebook=26904; last-modified=2026-07-11T10:37:59Z"
+      }
+    },
+    {
+      "id": "source-code",
+      "role": "arena",
+      "label": "Source code",
+      "path": "source-code.txt",
+      "bytes": 11150,
+      "sha256": "85d73e354cc50cec76cb5a50537cf8dc035f8cbb8480f9e1cbe2f7d6c23393c7",
+      "source": {
+        "url": "https://corpus.canterbury.ac.nz/resources/cantrbry.zip",
+        "archive_member": "fields.c",
+        "archive_bytes": 733976,
+        "archive_sha256": "c44b686dfc137e74aba4db0540e5d6568cb09e270ba8f8411d2f9df24f39a1a6",
+        "revision": "last-modified=2007-07-02T01:45:57Z"
+      }
+    },
+    {
+      "id": "emoji-heavy",
+      "role": "arena",
+      "label": "Emoji-heavy text",
+      "path": "emoji-heavy.txt",
+      "bytes": 3772,
+      "sha256": "6f92d951cb6d1bb4fe6d4fbbe36535a8b7241b54fd9accc62b4cf1eb404af46d",
+      "source": {
+        "kind": "curated",
+        "description": "Checked-in valid UTF-8 corpus covering scalar, modifier, flag, variation-selector, keycap, and zero-width-joiner sequences"
+      }
+    },
+    {
+      "id": "long-document",
+      "role": "arena",
+      "label": "Long document",
+      "path": "long-document.txt",
+      "bytes": 738046,
+      "sha256": "a5666f87abf2cbfdaa27ea8c73bd284da9649b9a2ab27b4e6c8f6aeab1bd1c88",
+      "source": {
+        "url": "https://www.gutenberg.org/files/1342/1342-0.txt",
+        "title": "Pride and Prejudice",
+        "revision": "ebook=1342; last-modified=2026-02-10T17:53:56Z"
+      }
+    },
+    {
+      "id": "standard-text",
+      "role": "arena",
+      "label": "Third-party standard text",
+      "path": "standard-text.txt",
+      "bytes": 125179,
+      "sha256": "eaa3526fe53859f34ecdf255712f9ecf0b2c903451d4755b2edaa2e2599cb0fc",
+      "source": {
+        "url": "https://corpus.canterbury.ac.nz/resources/cantrbry.zip",
+        "archive_member": "asyoulik.txt",
+        "archive_bytes": 733976,
+        "archive_sha256": "c44b686dfc137e74aba4db0540e5d6568cb09e270ba8f8411d2f9df24f39a1a6",
+        "revision": "last-modified=2007-07-02T01:45:57Z",
+        "standard": "Canterbury Corpus"
+      }
+    },
+    {
+      "id": "script-latin",
+      "role": "script-stress",
+      "label": "Latin long pretoken",
+      "path": "script-latin.txt",
+      "bytes": 385,
+      "sha256": "7c83deb9cb2358a568285e8f10f9eacef67b87a784ca0a30895af95cc6c7f0af",
+      "source": {
+        "kind": "curated",
+        "description": "Long Latin pretoken used to exercise chunk engagement"
+      }
+    },
+    {
+      "id": "script-han",
+      "role": "script-stress",
+      "label": "Han long pretoken",
+      "path": "script-han.txt",
+      "bytes": 451,
+      "sha256": "efe929232340b627f0de86670682f789ca42db29dcd05e50465d93891db82566",
+      "source": {
+        "kind": "curated",
+        "description": "Long Han pretoken used to exercise chunk engagement"
+      }
+    },
+    {
+      "id": "script-arabic",
+      "role": "script-stress",
+      "label": "Arabic long pretoken",
+      "path": "script-arabic.txt",
+      "bytes": 455,
+      "sha256": "41c6396e0bca237c6dcd35cff0fc41ed2f2e08baae0f6d255584226df572ebc3",
+      "source": {
+        "kind": "curated",
+        "description": "Long Arabic pretoken used to exercise chunk engagement"
+      }
+    },
+    {
+      "id": "script-emoji",
+      "role": "script-stress",
+      "label": "Emoji long pretoken",
+      "path": "script-emoji.txt",
+      "bytes": 449,
+      "sha256": "6cb4d80e1c7da3cd004e42aaf6bb1a70d84d55345ae961d26ab44e1d0d3cf434",
+      "source": {
+        "kind": "curated",
+        "description": "Long emoji pretoken used to exercise chunk engagement"
+      }
+    }
+  ]
+}

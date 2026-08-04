@@ -1,0 +1,16 @@
+[package]
+name = "unicode-nfc-gen"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[workspace]
+resolver = "3"
+
+[dependencies]
+sha2 = "0.10.9"
+
+[lints.clippy]
+all = "deny"
+pedantic = "deny"

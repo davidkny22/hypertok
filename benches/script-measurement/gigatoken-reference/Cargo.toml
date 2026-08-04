@@ -1,0 +1,16 @@
+[package]
+name = "hypertok-gigatoken-reference"
+version = "0.1.0"
+edition = "2024"
+publish = false
+build = "build.rs"
+
+[dependencies]
+gigatoken = { git = "https://github.com/marcelroed/gigatoken", rev = "34a1599f0c0ae7d7cd0d1c530e6522320158b360" }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "=1.0.150"
+sha2 = "0.10"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1

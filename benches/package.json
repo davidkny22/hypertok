@@ -1,0 +1,61 @@
+{
+  "name": "hypertok-benchmark-harness",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node run.mjs test",
+    "test:browser-control": "node tests/verify_browser_control.mjs",
+    "test:browser-server": "node tests/verify_browser_server.mjs",
+    "test:contracts": "node tests/verify_public_contracts.mjs",
+    "test:output": "node tests/verify_output.mjs",
+    "test:runner": "node tests/verify_runner.mjs",
+    "test:gpt2-model": "node tests/verify_gpt2_model.mjs",
+    "test:corpus": "node tests/verify_corpus.mjs",
+    "test:node-adapters": "node tests/verify_node_adapters.mjs",
+    "test:agreement": "node tests/verify_agreement.mjs",
+    "test:agreement:browser": "node tests/verify_browser_agreement.mjs",
+    "test:agreement:cross-env": "node tests/verify_agreement_cross_env.mjs",
+    "test:agreement:gate": "npm run test:gpt2-model && npm run test:agreement && npm run test:agreement:browser && npm run test:agreement:cross-env",
+    "test:browser-adapters": "node tests/verify_browser_adapters.mjs",
+    "test:decode": "node tests/verify_decode_throughput.mjs",
+    "test:self-check": "node tests/verify_harness_self_check_node.mjs",
+    "test:self-check:browser": "node tests/verify_harness_self_check_browser.mjs",
+    "test:self-check:cross-env": "node tests/verify_harness_self_check_cross_env.mjs",
+    "test:self-check:gate": "npm run test:self-check && npm run test:self-check:browser && npm run test:self-check:cross-env",
+    "test:reference-payloads": "node tests/verify_reference_payloads.mjs",
+    "test:reference-payloads:node": "node tests/verify_reference_payloads_node.mjs",
+    "measure:node:encode": "node measure_node_throughput.mjs",
+    "measure:browser:encode": "node measure_browser_throughput.mjs",
+    "measure:node:decode": "node measure_node_decode.mjs",
+    "measure:browser:decode": "node measure_browser_decode.mjs",
+    "measure:decode:routes": "node measure_decode_route_pricing.mjs",
+    "measure:decode:mixed": "node measure_decode_route_pricing.mjs --candidate=mixed",
+    "measure:decode:gather": "node measure_decode_gather.mjs",
+    "measure:decode:validation": "node measure_decode_route_pricing.mjs --candidate=fused",
+    "measure:decode:dispatch": "node measure_decode_route_pricing.mjs --candidate=lean",
+    "measure:node:load": "node measure_node_load.mjs",
+    "measure:browser:load": "node measure_browser_load.mjs",
+    "measure:stationarity": "node stationarity.mjs",
+    "benchmark:smoke": "node run.mjs benchmark --profile arena --mode smoke",
+    "benchmark": "node run.mjs benchmark --profile arena --mode full",
+    "benchmark:shipping:smoke": "node run.mjs benchmark --profile shipping --mode smoke",
+    "benchmark:shipping": "node run.mjs benchmark --profile shipping --mode full"
+  },
+  "dependencies": {
+    "@dqbd/tiktoken": "1.0.21",
+    "@goliapkg/tiktoken-wasm": "3.5.1",
+    "@huggingface/tokenizers": "0.1.3",
+    "@lenml/tokenizer-gpt2": "3.7.2",
+    "@lenml/tokenizers": "3.7.2",
+    "gpt-tokenizer": "3.4.0",
+    "js-tiktoken": "1.0.21",
+    "kitoken": "0.11.0",
+    "playwright-core": "1.62.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
+  }
+}

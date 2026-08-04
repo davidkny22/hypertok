@@ -1,0 +1,66 @@
+name: Performance report
+description: Report a reproducible throughput, load, decode, or memory result.
+title: "perf: "
+labels:
+  - performance
+body:
+  - type: markdown
+    attributes:
+      value: Performance comparisons require agreement first. Report each workload and axis separately.
+  - type: input
+    id: version
+    attributes:
+      label: hypertok commit
+      placeholder: full commit hash
+    validations:
+      required: true
+  - type: input
+    id: reference
+    attributes:
+      label: Reference and version
+    validations:
+      required: true
+  - type: input
+    id: workload
+    attributes:
+      label: Workload and byte count
+    validations:
+      required: true
+  - type: input
+    id: configuration
+    attributes:
+      label: Tier, SIMD level, and clock regime
+    validations:
+      required: true
+  - type: textarea
+    id: agreement
+    attributes:
+      label: Agreement evidence
+      description: State whether token IDs match before comparing throughput.
+    validations:
+      required: true
+  - type: textarea
+    id: statistics
+    attributes:
+      label: Measurement statistics
+      description: Include warmup, n, median, p95, variance, cache state, and machine identity.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction command and output
+      description: Start with `npm.cmd --prefix benches run benchmark:smoke` or the matching full public harness command.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Reporter checks
+      options:
+        - label: The compared implementations received identical input bytes.
+          required: true
+        - label: Agreement was checked before timing.
+          required: true
+        - label: I reported workloads separately rather than averaging them.
+          required: true

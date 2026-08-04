@@ -1,0 +1,56 @@
+name: Feature request
+description: Propose a behavior, format, runtime, shim, or harness change.
+title: "feature: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the user-visible limitation with a concrete example.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior
+      description: Define outputs, errors, compatibility, and unsupported cases.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Example or reproduction
+      description: Give a command, input, or small program that would exercise the change.
+    validations:
+      required: true
+  - type: dropdown
+    id: gate
+    attributes:
+      label: Public gate owner
+      description: Select the durable profile that should prove the behavior.
+      options:
+        - quick
+        - correctness
+        - release
+        - mutation
+        - benchmark smoke or full
+    validations:
+      required: true
+  - type: textarea
+    id: negative
+    attributes:
+      label: Negative and mutation cases
+      description: Name invalid inputs, refusal behavior, and a behavioral fault the verifier should catch.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Request checks
+      options:
+        - label: The proposal preserves bit-exact tokenizer output or names the required refusal.
+          required: true
+        - label: The proposal does not depend on source layout or local evidence files.
+          required: true

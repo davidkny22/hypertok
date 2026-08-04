@@ -1,0 +1,14 @@
+GPT-2 vocabulary
+
+Source package: @lenml/tokenizer-gpt2
+Source file: models/tokenizer.json
+Source URL: https://registry.npmjs.org/@lenml/tokenizer-gpt2/-/tokenizer-gpt2-3.7.2.tgz
+Source revision: @lenml/tokenizer-gpt2@3.7.2
+Source SHA-256: cda20b8ca044949aa07ac4078420c80d1a57139d5f9f33700e46fb2d891e7c66
+HTK file SHA-256: 17e4cc7df1f4d95b80c43df52ecc31f9e5931a319e9964cffbf9dc4ed88c9da2
+
+The pinned source archive includes the MIT License reproduced in this package and identifies
+Copyright (c) 2024 lenML. Its npm manifest declares Apache-2.0; this NOTICE records that metadata
+conflict rather than silently replacing the license text actually shipped with the pinned source.
+The tokenizer represents OpenAI GPT-2. This package is not affiliated with or endorsed by lenML
+or OpenAI.

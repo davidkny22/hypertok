@@ -1,0 +1,313 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "format-lookup-baseline",
+      "invariant": "valid format mapping and exact lookup remain green",
+      "featureGraph": "htk,source-loaders",
+      "surface": "owned-memory",
+      "expected": "pass",
+      "faults": 0,
+      "executable": "cargo",
+      "arguments": ["test", "--locked", "--no-default-features", "--features", "htk,source-loaders", "--test", "format_lookup_faults"]
+    },
+    {
+      "id": "drop-length",
+      "invariant": "section length metadata matches emitted payload",
+      "featureGraph": "htk,source-loaders",
+      "surface": "generated-artifact",
+      "expected": "fail",
+      "faults": 1,
+      "prescribed": true,
+      "environment": { "HYPERTOK_FORMAT_LOOKUP_FAULT": "drop-length" },
+      "executable": "cargo",
+      "arguments": ["test", "--locked", "--no-default-features", "--features", "htk,source-loaders", "--test", "format_lookup_faults"]
+    },
+    {
+      "id": "arena-byte",
+      "invariant": "emitted token bytes match the source mapping",
+      "featureGraph": "htk,source-loaders",
+      "surface": "generated-artifact",
+      "expected": "fail",
+      "faults": 1,
+      "prescribed": true,
+      "environment": { "HYPERTOK_FORMAT_LOOKUP_FAULT": "arena-byte" },
+      "executable": "cargo",
+      "arguments": ["test", "--locked", "--no-default-features", "--features", "htk,source-loaders", "--test", "format_lookup_faults"]
+    },
+    {
+      "id": "hash-entry",
+      "invariant": "portable hash images preserve every key",
+      "featureGraph": "htk,source-loaders",
+      "surface": "generated-artifact",
+      "expected": "fail",
+      "faults": 1,
+      "prescribed": true,
+      "environment": { "HYPERTOK_FORMAT_LOOKUP_FAULT": "hash-entry" },
+      "executable": "cargo",
+      "arguments": ["test", "--locked", "--no-default-features", "--features", "htk,source-loaders", "--test", "format_lookup_faults"]
+    },
+    {
+      "id": "fingerprint-entry",
+      "invariant": "fingerprint tables return the exact stored token",
+      "featureGraph": "htk,source-loaders",
+      "surface": "generated-artifact",
+      "expected": "fail",
+      "faults": 1,
+      "prescribed": true,
+      "environment": { "HYPERTOK_FORMAT_LOOKUP_FAULT": "fingerprint-entry" },
+      "executable": "cargo",
+      "arguments": ["test", "--locked", "--no-default-features", "--features", "htk,source-loaders", "--test", "format_lookup_faults"]
+    },
+    {
+      "id": "digest",
+      "invariant": "the embedded digest binds the complete file",
+      "featureGraph": "htk,source-loaders",
+      "surface": "generated-artifact",
+      "expected": "fail",
+      "faults": 1,
+      "prescribed": true,
+      "environment": { "HYPERTOK_FORMAT_LOOKUP_FAULT": "digest" },
+      "executable": "cargo",
+      "arguments": ["test", "--locked", "--no-default-features", "--features", "htk,source-loaders", "--test", "format_lookup_faults"]
+    },
+    {
+      "id": "prefix-comparison",
+      "invariant": "lookup requires full token equality",
+      "featureGraph": "htk,source-loaders",
+      "surface": "owned-memory",
+      "expected": "fail",
+      "faults": 1,
+      "prescribed": true,
+      "environment": { "HYPERTOK_FORMAT_LOOKUP_FAULT": "prefix-comparison" },
+      "executable": "cargo",
+      "arguments": ["test", "--locked", "--no-default-features", "--features", "htk,source-loaders", "--test", "format_lookup_faults"]
+    },
+    {
+      "id": "assumption-baseline",
+      "invariant": "unsupported tokenizer behavior is refused and pair priority remains distinguishable",
+      "featureGraph": "converter",
+      "surface": "test-mode",
+      "expected": "pass",
+      "faults": 0,
+      "executable": "cargo",
+      "arguments": ["test", "--locked", "--manifest-path", "hypertok-converter/Cargo.toml", "--test", "assumption_negative"]
+    },
+    {
+      "id": "unknown-template-behavior",
+      "invariant": "unknown template behavior causes no conversion",
+      "featureGraph": "converter",
+      "surface": "test-mode",
+      "expected": "fail",
+      "faults": 1,
+      "environment": { "HYPERTOK_ASSUMPTION_FAULT": "accept-template-piece" },
+      "executable": "cargo",
+      "arguments": ["test", "--locked", "--manifest-path", "hypertok-converter/Cargo.toml", "--test", "assumption_negative", "behavior_fields_outside_the_schema_produce_no_conversion"]
+    },
+    {
+      "id": "priority-oracle",
+      "invariant": "pair-ranked merges differ observably from token-ranked priority",
+      "featureGraph": "converter",
+      "surface": "test-mode",
+      "expected": "fail",
+      "faults": 1,
+      "environment": { "HYPERTOK_ASSUMPTION_FAULT": "priority-oracle" },
+      "executable": "cargo",
+      "arguments": ["test", "--locked", "--manifest-path", "hypertok-converter/Cargo.toml", "--test", "assumption_negative", "per_token_priority_assumption_has_a_detectable_counterexample"]
+    },
+    {
+      "id": "shape-baseline",
+      "invariant": "loader construction compiles against both supported structural classes",
+      "featureGraph": "htk,sentencepiece-core",
+      "surface": "compile-contract",
+      "expected": "pass",
+      "faults": 0,
+      "executable": "cargo",
+      "arguments": ["check", "--locked", "--no-default-features", "--features", "htk,sentencepiece-core", "--lib"]
+    },
+    {
+      "id": "byte-constructor-shape",
+      "invariant": "ranked byte construction keeps its typed loader boundary",
+      "featureGraph": "htk,sentencepiece-core",
+      "surface": "compile-contract",
+      "expected": "fail",
+      "faults": 1,
+      "environment": { "RUSTFLAGS": "--cfg=hypertok_test_fault=\"byte-constructor\"" },
+      "executable": "cargo",
+      "arguments": ["check", "--locked", "--no-default-features", "--features", "htk,sentencepiece-core", "--lib"]
+    },
+    {
+      "id": "sentencepiece-shape",
+      "invariant": "SentencePiece cross-boundary state keeps its typed loader boundary",
+      "featureGraph": "htk,sentencepiece-core",
+      "surface": "compile-contract",
+      "expected": "fail",
+      "faults": 1,
+      "environment": { "RUSTFLAGS": "--cfg=hypertok_test_fault=\"sentencepiece-shape\"" },
+      "executable": "cargo",
+      "arguments": ["check", "--locked", "--no-default-features", "--features", "htk,sentencepiece-core", "--lib"]
+    },
+    {
+      "id": "overlap-reconciliation",
+      "invariant": "chunk reconciliation matches unsplit output",
+      "featureGraph": "htk,sentencepiece-core",
+      "surface": "owned-memory",
+      "expected": "pass",
+      "faults": 1,
+      "match": "verification mutation RED=1/1",
+      "executable": "powershell",
+      "arguments": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tests/overlap-parity/verify.ps1"]
+    },
+    {
+      "id": "build-browser-faults",
+      "invariant": "browser fault fixtures build through the supported bundler graph",
+      "featureGraph": "single,worker,shared",
+      "surface": "browser-fault-fixture",
+      "expected": "pass",
+      "faults": 0,
+      "match": "browser fixtures PASS (10/10 builds)",
+      "executable": "powershell",
+      "arguments": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "hypertok-js/tests/build_browser_fixtures.ps1"]
+    },
+    {
+      "id": "artifact-identity",
+      "invariant": "artifact identity rejects feature, digest, and path faults",
+      "featureGraph": "shipping artifacts",
+      "surface": "generated-artifact",
+      "expected": "pass",
+      "faults": 3,
+      "match": "artifact manifest mutations RED",
+      "executable": "node",
+      "arguments": ["tests/suites/verify_artifact_manifest.mjs"]
+    },
+    {
+      "id": "feature-composition",
+      "invariant": "shipping composition preserves identity, output, and route behavior",
+      "featureGraph": "shipping artifacts",
+      "surface": "owned-memory",
+      "expected": "pass",
+      "faults": 3,
+      "match": "\"mutationsRed\":3",
+      "executable": "node",
+      "arguments": ["tests/suites/verify_feature_composition.mjs"]
+    },
+    {
+      "id": "simd-output",
+      "invariant": "SIMD output remains byte-identical to scalar output",
+      "featureGraph": "shipping scalar and simd128",
+      "surface": "owned-memory",
+      "expected": "fail",
+      "faults": 1,
+      "environment": { "HYPERTOK_SIMD_FAULT": "first-id" },
+      "executable": "node",
+      "arguments": ["tests/suites/verify_simd_parity.mjs"]
+    },
+    {
+      "id": "simd-restored",
+      "invariant": "SIMD output remains byte-identical to scalar output",
+      "featureGraph": "shipping scalar and simd128",
+      "surface": "owned-memory",
+      "expected": "pass",
+      "faults": 0,
+      "match": "\"pass\":true",
+      "executable": "node",
+      "arguments": ["tests/suites/verify_simd_parity.mjs"]
+    },
+    {
+      "id": "tier-parity",
+      "invariant": "all tiers remain exact across both bundlers",
+      "featureGraph": "single,worker,shared",
+      "surface": "browser-fault-fixture",
+      "expected": "pass",
+      "faults": 4,
+      "match": "\"mutationsRed\":4",
+      "executable": "node",
+      "arguments": ["hypertok-js/tests/verify_tier_parity.mjs"]
+    },
+    {
+      "id": "tier-switching",
+      "invariant": "tier switching preserves worker images, lifecycle, and resident reuse",
+      "featureGraph": "single,worker,shared",
+      "surface": "browser-fault-fixture",
+      "expected": "pass",
+      "faults": 6,
+      "match": "\"mutationsRed\":6",
+      "executable": "node",
+      "arguments": ["hypertok-js/tests/verify_tier_switch.mjs"]
+    },
+    {
+      "id": "decode-round-trip",
+      "invariant": "decoded output exactly reconstructs encoded text",
+      "featureGraph": "single,worker,shared",
+      "surface": "browser-fault-fixture",
+      "expected": "pass",
+      "faults": 1,
+      "match": "\"mutationRed\":true",
+      "executable": "node",
+      "arguments": ["hypertok-js/tests/verify_decode_roundtrip.mjs"]
+    },
+    {
+      "id": "reserved-reporting",
+      "invariant": "reserved-token reporting remains exact across core and shims",
+      "featureGraph": "single",
+      "surface": "owned-memory",
+      "expected": "pass",
+      "faults": 1,
+      "match": "\"mutationRed\":true",
+      "executable": "node",
+      "arguments": ["hypertok-js/tests/verify_reserved_policy.mjs"]
+    },
+    {
+      "id": "shim-fidelity",
+      "invariant": "shim ids, bytes, lazy tokens, and mutable ids match their contracts",
+      "featureGraph": "single",
+      "surface": "owned-memory",
+      "expected": "pass",
+      "faults": 4,
+      "match": "\"lazyIds\":true",
+      "executable": "node",
+      "arguments": ["hypertok-js/tests/verify_shim_fidelity.mjs"]
+    },
+    {
+      "id": "starts-fidelity",
+      "invariant": "token starts remain original-input UTF-8 offsets",
+      "featureGraph": "single,worker,shared",
+      "surface": "owned-memory",
+      "expected": "pass",
+      "faults": 1,
+      "match": "\"mutationRed\":true",
+      "executable": "node",
+      "arguments": ["hypertok-js/tests/verify_starts_fidelity.mjs"]
+    },
+    {
+      "id": "format-lookup-restored",
+      "invariant": "valid format mapping and exact lookup remain green",
+      "featureGraph": "htk,source-loaders",
+      "surface": "owned-memory",
+      "expected": "pass",
+      "faults": 0,
+      "executable": "cargo",
+      "arguments": ["test", "--locked", "--no-default-features", "--features", "htk,source-loaders", "--test", "format_lookup_faults"]
+    },
+    {
+      "id": "assumption-restored",
+      "invariant": "unsupported tokenizer behavior is refused and pair priority remains distinguishable",
+      "featureGraph": "converter",
+      "surface": "test-mode",
+      "expected": "pass",
+      "faults": 0,
+      "executable": "cargo",
+      "arguments": ["test", "--locked", "--manifest-path", "hypertok-converter/Cargo.toml", "--test", "assumption_negative"]
+    },
+    {
+      "id": "shape-restored",
+      "invariant": "loader construction compiles against both supported structural classes",
+      "featureGraph": "htk,sentencepiece-core",
+      "surface": "compile-contract",
+      "expected": "pass",
+      "faults": 0,
+      "executable": "cargo",
+      "arguments": ["check", "--locked", "--no-default-features", "--features", "htk,sentencepiece-core", "--lib"]
+    }
+  ]
+}

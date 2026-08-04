@@ -1,0 +1,12 @@
+[package]
+name = "hypertok-unicode-table-gen"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[workspace]
+resolver = "3"
+
+[dependencies]
+icu = { version = "=2.2.0", features = ["compiled_data"] }

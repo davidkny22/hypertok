@@ -1,0 +1,9 @@
+OpenAI o200k_base vocabulary
+
+Source: https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken
+Source revision: openai/tiktoken@08a5f3b2c987ada4fc5aa1f16c643c203fa8acaa
+Source SHA-256: 446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d
+HTK file SHA-256: a583ea153eee0f3547df36f1ad2f38e3d1e92c16942f4ddbafa4b7a9979cb111
+
+The source is distributed under the MIT License included in this package.
+This package is not affiliated with or endorsed by OpenAI.

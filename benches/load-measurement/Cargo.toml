@@ -1,0 +1,19 @@
+[package]
+name = "hypertok-load-worker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+brotli = "=8.0.4"
+hypertok-converter = { path = "../../hypertok-converter" }
+hypertok-format = { path = "../../hypertok-format" }
+hypertok-hash = { path = "../../hypertok-hash", features = ["builder"] }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.150"
+
+[profile.release]
+lto = "fat"
+
+[workspace]

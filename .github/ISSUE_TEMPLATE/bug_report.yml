@@ -1,0 +1,67 @@
+name: Correctness or runtime bug
+description: Report a reproducible output, refusal, package, or runtime defect.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: Search existing issues first. Reduce correctness reports to one vocabulary, one input, and one execution tier when possible.
+  - type: input
+    id: version
+    attributes:
+      label: hypertok version or commit
+      placeholder: npm version or full commit hash
+    validations:
+      required: true
+  - type: input
+    id: vocabulary
+    attributes:
+      label: Vocabulary package or source revision
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Runtime environment
+      description: Include operating system, Node or browser version, tier, and SIMD level.
+    validations:
+      required: true
+  - type: textarea
+    id: input
+    attributes:
+      label: Minimal input
+      description: Provide text or reproducible bytes. Remove secrets and private data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Include expected token IDs, decoded bytes, refusal, or package behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction command
+      description: Prefer a direct command from the public gate ladder or a minimal repository.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Reporter checks
+      options:
+        - label: I searched existing issues.
+          required: true
+        - label: I can reproduce this with the command above.
+          required: true
+        - label: I removed credentials, private text, and proprietary data.
+          required: true
