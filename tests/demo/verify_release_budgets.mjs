@@ -18,13 +18,13 @@ function verifyMetadata(metadata) {
   assert.equal(metadata.title, "hypertok");
   assert.match(metadata.description, /hypertok/i);
   assert.equal(metadata.ogType, "website");
-  assert.equal(metadata.ogUrl, "./");
+  assert.equal(metadata.ogUrl, "https://davidkny22.github.io/hypertok/");
   assert.equal(metadata.ogTitle, "hypertok");
   assert.match(metadata.ogDescription, /tokenization/i);
-  assert.equal(metadata.ogImage, "./preview.png");
+  assert.equal(metadata.ogImage, "https://davidkny22.github.io/hypertok/preview.png");
   assert.match(metadata.ogImageAlt, /hypertok/i);
   assert.equal(metadata.twitterCard, "summary_large_image");
-  assert.equal(metadata.twitterImage, "./preview.png");
+  assert.equal(metadata.twitterImage, "https://davidkny22.github.io/hypertok/preview.png");
   assert.match(metadata.twitterImageAlt, /hypertok/i);
   assert.equal(metadata.canonical, "./");
 }
