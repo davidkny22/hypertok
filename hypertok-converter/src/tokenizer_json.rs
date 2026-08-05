@@ -109,14 +109,14 @@ fn convert_sentencepiece(parsed: Tokenizer) -> Result<Conversion, JsonConversion
     let specials = validate_sentencepiece_added_tokens(&parsed.added_tokens, &token_strings)?;
     let (byte_fallback, byte_fallback_ids) = derive_byte_fallback(&token_strings, &specials)?;
     let (base, base_ids) = derive_base(&token_strings, &specials, &byte_fallback_ids)?;
-    let (priority, inversions, _) = derive_priority(
+    let (priority, inversions, non_products, exhaustive_splits) = derive_priority(
         &parsed.model.merges,
         &parsed.model.vocab,
         &specials,
         &byte_fallback_ids,
         &base_ids,
         vocab_size,
-        false,
+        true,
     )?;
 
     let mut slots = Vec::with_capacity(vocab_size as usize);
@@ -165,13 +165,17 @@ fn convert_sentencepiece(parsed: Tokenizer) -> Result<Conversion, JsonConversion
         Section::new(SectionId::ByteFall, byte_fallback),
         Section::new(SectionId::Unk, unk),
     ];
-    if inversions != 0 {
+    if inversions != 0 || non_products != 0 || exhaustive_splits {
         sections.push(Section::new(SectionId::Priority, priority));
     }
     let bytes = write(&Document {
         structural_class: StructuralClass::SentencePieceBpe,
         hash_scheme: HashScheme::None,
-        flags: 0,
+        flags: if exhaustive_splits {
+            BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG
+        } else {
+            0
+        },
         vocab_size,
         omega,
         sections,
@@ -192,7 +196,7 @@ fn convert_sentencepiece(parsed: Tokenizer) -> Result<Conversion, JsonConversion
         gap_count: 0,
         omega,
         digest: embedded_digest,
-        priority_present: inversions != 0,
+        priority_present: inversions != 0 || non_products != 0 || exhaustive_splits,
         priority_inversions: inversions,
     })
 }
@@ -259,12 +263,12 @@ fn convert_byte_bpe(parsed: Tokenizer) -> Result<Conversion, JsonConversionError
     )?;
     let normalizer = encode_byte_normalizer(parsed.normalizer.as_ref())?;
     validate_byte_decoder(parsed.decoder.as_ref().expect("validated decoder"))?;
-    let post = encode_byte_postprocessor(
-        parsed
-            .post_processor
-            .as_ref()
-            .expect("validated postprocessor"),
-    )?;
+    let post = parsed
+        .post_processor
+        .as_ref()
+        .map(encode_byte_postprocessor)
+        .transpose()?
+        .flatten();
 
     let mut arena = Vec::new();
     let mut lengths = Vec::with_capacity(slots.len());
@@ -320,7 +324,7 @@ fn convert_byte_bpe(parsed: Tokenizer) -> Result<Conversion, JsonConversionError
     let source_token_count = u32::try_from(slots.iter().flatten().count())
         .map_err(|_| JsonConversionError::SizeOverflow)?;
     let special_token_count =
-        u32::try_from(parsed.added_tokens.len()).map_err(|_| JsonConversionError::SizeOverflow)?;
+        u32::try_from(added_ids.len()).map_err(|_| JsonConversionError::SizeOverflow)?;
     let key_set_size =
         u32::try_from(lookup.len()).map_err(|_| JsonConversionError::SizeOverflow)?;
     Ok(Conversion {
@@ -362,10 +366,15 @@ fn validate_byte_added_tokens(
     model_tokens: &[&str],
 ) -> Result<BTreeSet<u32>, JsonConversionError> {
     let mut ids = BTreeSet::new();
+    let mut records = BTreeMap::new();
     for token in added {
-        if !ids.insert(token.id) {
-            return Err(JsonConversionError::InvalidId(token.id));
+        if let Some(previous) = records.insert(token.id, token) {
+            if previous != token {
+                return Err(JsonConversionError::InvalidId(token.id));
+            }
+            continue;
         }
+        ids.insert(token.id);
         if let Some(model_token) = model_tokens.get(token.id as usize)
             && *model_token != token.content
         {
@@ -452,13 +461,8 @@ fn derive_byte_base(
 }
 
 fn validate_byte_envelope(tokenizer: &Tokenizer) -> Result<(), JsonConversionError> {
-    if tokenizer.pre_tokenizer.is_none()
-        || tokenizer.decoder.is_none()
-        || tokenizer.post_processor.is_none()
-    {
-        return Err(JsonConversionError::Unsupported(
-            "pre_tokenizer, decoder, or post_processor",
-        ));
+    if tokenizer.pre_tokenizer.is_none() || tokenizer.decoder.is_none() {
+        return Err(JsonConversionError::Unsupported("pre_tokenizer or decoder"));
     }
     if tokenizer.model.unk_token.is_some() || tokenizer.model.fuse_unk {
         return Err(JsonConversionError::Unsupported("byte-BPE unknown token"));
@@ -498,22 +502,36 @@ fn encode_byte_pretokenizer(pretokenizer: &PreTokenizer) -> Result<Vec<u8>, Json
                 ));
             }
             let mut regexes = Vec::with_capacity(split_steps.len());
+            let mut removed_inverted = false;
             for step in split_steps {
                 let PreTokenizer::Split {
                     pattern,
-                    behavior: SplitBehavior::Isolated,
+                    behavior,
                     invert,
                 } = step
                 else {
                     return Err(JsonConversionError::Unsupported("byte-BPE split sequence"));
                 };
-                if *invert {
-                    return Err(JsonConversionError::Unsupported("inverted split"));
+                match (behavior, invert) {
+                    (SplitBehavior::Isolated, false) => {}
+                    (SplitBehavior::Removed, true) if split_steps.len() == 1 => {
+                        removed_inverted = true;
+                    }
+                    _ => return Err(JsonConversionError::Unsupported("byte-BPE split behavior")),
                 }
-                regexes.push(pattern.regex());
+                regexes.push(
+                    pattern
+                        .regex()
+                        .ok_or(JsonConversionError::Unsupported("byte-BPE split pattern"))?,
+                );
             }
             let pattern = identify_named_pattern(&regexes)
                 .ok_or(JsonConversionError::Unsupported("named split pattern"))?;
+            if removed_inverted && pattern != NamedPattern::O200kBase {
+                return Err(JsonConversionError::Unsupported(
+                    "removed inverted split pattern",
+                ));
+            }
             (pattern, *add_prefix_space, *trim_offsets, *use_regex)
         }
         _ => {
@@ -533,6 +551,8 @@ fn encode_byte_pretokenizer(pretokenizer: &PreTokenizer) -> Result<Vec<u8>, Json
 }
 
 fn identify_named_pattern(regexes: &[&str]) -> Option<NamedPattern> {
+    const RIGHT_GROUP_DIGITS: &str = r"\d{1,3}(?=(?:\d{3})*\b)";
+    const O200K: &str = r"[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*(?i:'s|'t|'re|'ve|'m|'ll|'d)?|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n/]*|\s*[\r\n]+|\s+(?!\S)|\s+";
     const LLAMA3_CL100K: &str = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+";
     const QWEN35: &str = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?[\p{L}\p{M}]+|\p{N}| ?[^\s\p{L}\p{M}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+";
     const NEMOTRON: &str = r"[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n/]*|\s*[\r\n]+|\s+(?!\S)|\s+";
@@ -542,9 +562,13 @@ fn identify_named_pattern(regexes: &[&str]) -> Option<NamedPattern> {
         "[!\"#$%&'()*+,\\-./:;<=>?@\\[\\\\\\]^_`{|}~][A-Za-z]+|[^\r\n\\p{L}\\p{P}\\p{S}]?[\\p{L}\\p{M}]+| ?[\\p{P}\\p{S}]+[\r\n]*|\\s*[\r\n]+|\\s+(?!\\S)|\\s+",
     ];
     match regexes {
+        [value] if *value == O200K => Some(NamedPattern::O200kBase),
         [value] if *value == LLAMA3_CL100K => Some(NamedPattern::Cl100kBase),
         [value] if *value == QWEN35 => Some(NamedPattern::Qwen35),
         [value] if *value == NEMOTRON => Some(NamedPattern::Nemotron),
+        [digits, o200k] if *digits == RIGHT_GROUP_DIGITS && *o200k == O200K => {
+            Some(NamedPattern::CohereCommand)
+        }
         values if values == DEEPSEEK => Some(NamedPattern::DeepSeekV3),
         _ => None,
     }
@@ -616,12 +640,44 @@ fn encode_byte_postprocessor(post: &PostProcessor) -> Result<Option<Vec<u8>>, Js
                     "byte-BPE postprocessor sequence order",
                 ));
             }
+            if !template_options_absent(template) {
+                return Err(JsonConversionError::Unsupported(
+                    "byte-BPE postprocessor template options",
+                ));
+            }
             Ok(Some(encode_post(template)?))
         }
-        PostProcessor::TemplateProcessing { .. } => {
-            Err(JsonConversionError::Unsupported("byte-BPE postprocessor"))
+        PostProcessor::TemplateProcessing { .. } if template_options_are_command(post) => {
+            Ok(Some(encode_post(post)?))
         }
+        PostProcessor::TemplateProcessing { .. } => Err(JsonConversionError::Unsupported(
+            "byte-BPE postprocessor template options",
+        )),
     }
+}
+
+fn template_options_absent(post: &PostProcessor) -> bool {
+    matches!(
+        post,
+        PostProcessor::TemplateProcessing {
+            add_prefix_space: None,
+            trim_offsets: None,
+            use_regex: None,
+            ..
+        }
+    )
+}
+
+fn template_options_are_command(post: &PostProcessor) -> bool {
+    matches!(
+        post,
+        PostProcessor::TemplateProcessing {
+            add_prefix_space: Some(true),
+            trim_offsets: Some(false),
+            use_regex: Some(true),
+            ..
+        }
+    )
 }
 
 fn encode_byte_affix(model: &Model) -> Result<Option<Vec<u8>>, JsonConversionError> {
@@ -660,8 +716,24 @@ fn validate_common_envelope(tokenizer: &Tokenizer) -> Result<(), JsonConversionE
 }
 
 fn validate_sentencepiece_envelope(tokenizer: &Tokenizer) -> Result<(), JsonConversionError> {
-    if tokenizer.pre_tokenizer.is_some() {
-        return Err(JsonConversionError::Unsupported("pre_tokenizer"));
+    if let Some(pretokenizer) = tokenizer.pre_tokenizer.as_ref() {
+        let inert_space_split = matches!(
+            (pretokenizer, tokenizer.normalizer.as_ref()),
+            (
+                PreTokenizer::Split {
+                    pattern: SplitPattern::String(pattern),
+                    behavior: SplitBehavior::MergedWithPrevious,
+                    invert: false,
+                },
+                Some(Normalizer::Replace {
+                    pattern: normalizer_pattern,
+                    content,
+                }),
+            ) if pattern == " " && normalizer_pattern.as_string() == " " && content == "▁"
+        );
+        if !inert_space_split {
+            return Err(JsonConversionError::Unsupported("pre_tokenizer"));
+        }
     }
     if tokenizer.normalizer.is_none()
         || tokenizer.decoder.is_none()
@@ -771,26 +843,50 @@ fn derive_priority(
     base: &BTreeSet<u32>,
     vocab_size: u32,
     allow_non_products: bool,
-) -> Result<(Vec<u8>, u32, u32), JsonConversionError> {
+) -> Result<(Vec<u8>, u32, u32, bool), JsonConversionError> {
     let mut priorities = vec![0_u32; vocab_size as usize];
+    let mut reachable = base.clone();
+    reachable.extend(byte_fallback.keys().copied());
     let mut previous = None;
     let mut inversions = 0_u32;
+    let mut product_ids = BTreeSet::new();
+    let mut duplicate_products = 0_u32;
+    let mut source_pairs = BTreeSet::new();
     for (index, merge) in merges.iter().enumerate() {
         let (left, right) = merge
             .parts()
             .ok_or(JsonConversionError::InvalidMerge(index))?;
+        let left_id = *vocab
+            .get(left)
+            .ok_or(JsonConversionError::InvalidMerge(index))?;
+        let right_id = *vocab
+            .get(right)
+            .ok_or(JsonConversionError::InvalidMerge(index))?;
         let id = *vocab
             .get(&format!("{left}{right}"))
             .ok_or(JsonConversionError::InvalidMerge(index))?;
+        if !source_pairs.insert((left_id, right_id, id)) {
+            return Err(JsonConversionError::InvalidMerge(index));
+        }
+        if !product_ids.insert(id) {
+            duplicate_products = duplicate_products
+                .checked_add(1)
+                .ok_or(JsonConversionError::SizeOverflow)?;
+        }
         if previous.is_some_and(|value| id < value) {
             inversions += 1;
         }
         previous = Some(id);
+        if specials.contains(&id) || !reachable.contains(&left_id) || !reachable.contains(&right_id)
+        {
+            continue;
+        }
         let priority = u32::try_from(index + 1).map_err(|_| JsonConversionError::SizeOverflow)?;
         let slot = &mut priorities[id as usize];
         if *slot == 0 || priority < *slot {
             *slot = priority;
         }
+        reachable.insert(id);
     }
     let mut non_products = 0_u32;
     for id in 0..vocab_size {
@@ -805,11 +901,28 @@ fn derive_priority(
             non_products += 1;
         }
     }
+    let exhaustive_splits = duplicate_products != 0;
+    if exhaustive_splits {
+        let mut expected_pairs = BTreeSet::new();
+        for (token, &id) in vocab {
+            for (offset, _) in token.char_indices().skip(1) {
+                let (left, right) = token.split_at(offset);
+                if let (Some(&left_id), Some(&right_id)) = (vocab.get(left), vocab.get(right)) {
+                    expected_pairs.insert((left_id, right_id, id));
+                }
+            }
+        }
+        if source_pairs != expected_pairs {
+            return Err(JsonConversionError::Unsupported(
+                "duplicate-product merge coverage",
+            ));
+        }
+    }
     let mut output = Vec::new();
     for priority in priorities {
         encode_u32(priority, &mut output);
     }
-    Ok((output, inversions, non_products))
+    Ok((output, inversions, non_products, exhaustive_splits))
 }
 
 fn derive_byte_priority(
@@ -967,11 +1080,12 @@ fn encode_post(post: &PostProcessor) -> Result<Vec<u8>, JsonConversionError> {
         single,
         pair,
         special_tokens,
+        ..
     } = post
     else {
         return Err(JsonConversionError::Unsupported("byte-level postprocessor"));
     };
-    validate_pair_template(pair)?;
+    validate_pair_template(pair, special_tokens)?;
     let sequence = single
         .iter()
         .position(|piece| matches!(piece, TemplatePiece::Sequence { id, type_id: 0 } if id == "A"))
@@ -1010,22 +1124,46 @@ fn encode_post(post: &PostProcessor) -> Result<Vec<u8>, JsonConversionError> {
     Ok(output)
 }
 
-fn validate_pair_template(pair: &[TemplatePiece]) -> Result<(), JsonConversionError> {
-    if pair.len() != 4
-        || !matches!(&pair[0], TemplatePiece::SpecialToken { type_id: 0, .. })
-        || !matches!(&pair[1], TemplatePiece::Sequence { id, type_id: 0 } if id == "A")
-        || !matches!(&pair[2], TemplatePiece::SpecialToken { type_id: 1, .. })
-        || !matches!(&pair[3], TemplatePiece::Sequence { id, type_id: 1 } if id == "B")
-    {
+fn validate_pair_template(
+    pair: &[TemplatePiece],
+    special_tokens: &BTreeMap<String, PostSpecial>,
+) -> Result<(), JsonConversionError> {
+    let llama = pair.len() == 4
+        && matches!(&pair[0], TemplatePiece::SpecialToken { type_id: 0, .. })
+        && matches!(&pair[1], TemplatePiece::Sequence { id, type_id: 0 } if id == "A")
+        && matches!(&pair[2], TemplatePiece::SpecialToken { type_id: 1, .. })
+        && matches!(&pair[3], TemplatePiece::Sequence { id, type_id: 1 } if id == "B");
+    let command = pair.len() == 5
+        && matches!(&pair[0], TemplatePiece::SpecialToken { type_id: 0, .. })
+        && matches!(&pair[1], TemplatePiece::Sequence { id, type_id: 0 } if id == "A")
+        && matches!(&pair[2], TemplatePiece::Sequence { id, type_id: 1 } if id == "B")
+        && matches!(&pair[3], TemplatePiece::SpecialToken { type_id: 1, .. })
+        && matches!(&pair[4], TemplatePiece::SpecialToken { type_id: 1, .. });
+    if !llama && !command {
         return Err(JsonConversionError::Unsupported(
             "pair postprocessor template",
         ));
+    }
+    for piece in pair {
+        let TemplatePiece::SpecialToken { id, .. } = piece else {
+            continue;
+        };
+        let token = special_tokens
+            .get(id)
+            .ok_or(JsonConversionError::Unsupported("postprocessor special"))?;
+        if token.id != *id || token.ids.len() != 1 || token.tokens.as_slice() != [id.as_str()] {
+            return Err(JsonConversionError::Unsupported(
+                "postprocessor special mapping",
+            ));
+        }
     }
     Ok(())
 }
 
 fn encode_specials(added: &[AddedToken]) -> Result<Vec<u8>, JsonConversionError> {
-    let mut entries: Vec<_> = added.iter().collect();
+    let mut seen = BTreeSet::new();
+    let precedence: Vec<_> = added.iter().filter(|token| seen.insert(token.id)).collect();
+    let mut entries = precedence.clone();
     entries.sort_unstable_by_key(|token| token.id);
     let mut output = (entries.len() as u32).to_le_bytes().to_vec();
     for token in entries {
@@ -1037,7 +1175,7 @@ fn encode_specials(added: &[AddedToken]) -> Result<Vec<u8>, JsonConversionError>
             | (u32::from(token.normalized) << 3);
         output.extend_from_slice(&flags.to_le_bytes());
     }
-    for token in added {
+    for token in precedence {
         output.extend_from_slice(&token.id.to_le_bytes());
     }
     Ok(output)
@@ -1155,7 +1293,7 @@ struct Model {
     merges: Vec<Merge>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct AddedToken {
     id: u32,
@@ -1222,12 +1360,14 @@ enum PreTokenizer {
 #[serde(deny_unknown_fields)]
 enum SplitPattern {
     Regex(String),
+    String(String),
 }
 
 impl SplitPattern {
-    fn regex(&self) -> &str {
+    fn regex(&self) -> Option<&str> {
         match self {
-            Self::Regex(value) => value,
+            Self::Regex(value) => Some(value),
+            Self::String(_) => None,
         }
     }
 }
@@ -1235,6 +1375,8 @@ impl SplitPattern {
 #[derive(Deserialize)]
 enum SplitBehavior {
     Isolated,
+    MergedWithPrevious,
+    Removed,
 }
 
 #[derive(Deserialize)]
@@ -1281,6 +1423,12 @@ enum PostProcessor {
         processors: Vec<PostProcessor>,
     },
     TemplateProcessing {
+        #[serde(default)]
+        add_prefix_space: Option<bool>,
+        #[serde(default)]
+        trim_offsets: Option<bool>,
+        #[serde(default)]
+        use_regex: Option<bool>,
         single: Vec<TemplatePiece>,
         pair: Vec<TemplatePiece>,
         special_tokens: BTreeMap<String, PostSpecial>,

@@ -46,6 +46,7 @@ pub enum ConvertError {
     EmptyToken(usize),
     NonContiguousRank { expected: u32, actual: u32 },
     DuplicateToken { first: u32, second: u32 },
+    DuplicateRank(u32),
     DuplicateSpecialId(u32),
     DuplicateSpecialBytes,
     SpecialIdCollision(u32),
@@ -84,6 +85,7 @@ impl fmt::Display for ConvertError {
                 formatter,
                 "ranks {first} and {second} decode to the same token bytes"
             ),
+            Self::DuplicateRank(rank) => write!(formatter, "rank {rank} appears more than once"),
             Self::DuplicateSpecialId(id) => {
                 write!(formatter, "special token id {id} appears more than once")
             }
@@ -128,12 +130,14 @@ pub fn convert_tiktoken(
 
     let ordinary = parse_ranks(source)?;
     let ordinary_count = u32::try_from(ordinary.len()).map_err(|_| ConvertError::SizeOverflow)?;
-    validate_specials(definition.special_tokens, ordinary_count)?;
+    validate_specials(definition.special_tokens, &ordinary)?;
+    validate_rank_domain(&ordinary, definition.special_tokens)?;
 
     let highest_special = definition.special_tokens.iter().map(|token| token.id).max();
+    let highest_ordinary = ordinary.last().map(|(rank, _)| *rank);
     let highest_id = highest_special
         .into_iter()
-        .chain(ordinary_count.checked_sub(1))
+        .chain(highest_ordinary)
         .max()
         .ok_or(ConvertError::MissingByte(0))?;
     let vocab_size = highest_id
@@ -144,9 +148,9 @@ pub fn convert_tiktoken(
     }
 
     let mut base = [None; 256];
-    for (id, token) in ordinary.iter().enumerate() {
+    for (id, token) in &ordinary {
         if token.len() == 1 {
-            base[token[0] as usize] = Some(id as u32);
+            base[token[0] as usize] = Some(*id);
         }
     }
     let mut base_bytes = Vec::with_capacity(256 * 4);
@@ -156,8 +160,8 @@ pub fn convert_tiktoken(
     }
 
     let mut slots = vec![None; vocab_size as usize];
-    for (id, token) in ordinary.into_iter().enumerate() {
-        slots[id] = Some(token);
+    for (id, token) in &ordinary {
+        slots[*id as usize] = Some(token.clone());
     }
     for special in definition.special_tokens {
         if slots[special.id as usize].is_some() {
@@ -207,7 +211,7 @@ pub fn convert_tiktoken(
         ],
     };
     let bytes = write(&document).map_err(ConvertError::Write)?;
-    verify_mapping(&bytes, &slots, ordinary_count)?;
+    verify_mapping(&bytes, &slots, &ordinary)?;
     let file = ValidatedFile::read(&bytes)
         .map_err(|error| ConvertError::Write(WriteError::SelfValidation(error)))?;
     let digest = file.header().digest;
@@ -229,7 +233,7 @@ pub fn convert_tiktoken(
     })
 }
 
-fn parse_ranks(source: &[u8]) -> Result<Vec<Vec<u8>>, ConvertError> {
+fn parse_ranks(source: &[u8]) -> Result<Vec<(u32, Vec<u8>)>, ConvertError> {
     let content = source.strip_suffix(b"\n").unwrap_or(source);
     let mut rows = Vec::new();
     for (zero_based, raw_line) in content.split(|byte| *byte == b'\n').enumerate() {
@@ -261,13 +265,9 @@ fn parse_ranks(source: &[u8]) -> Result<Vec<Vec<u8>>, ConvertError> {
     }
 
     rows.sort_unstable_by_key(|(rank, _)| *rank);
-    for (expected, (actual, _)) in rows.iter().enumerate() {
-        let expected = u32::try_from(expected).map_err(|_| ConvertError::SizeOverflow)?;
-        if expected != *actual {
-            return Err(ConvertError::NonContiguousRank {
-                expected,
-                actual: *actual,
-            });
+    for pair in rows.windows(2) {
+        if pair[0].0 == pair[1].0 {
+            return Err(ConvertError::DuplicateRank(pair[0].0));
         }
     }
 
@@ -280,17 +280,20 @@ fn parse_ranks(source: &[u8]) -> Result<Vec<Vec<u8>>, ConvertError> {
             });
         }
     }
-    Ok(rows.into_iter().map(|(_, token)| token).collect())
+    Ok(rows)
 }
 
 fn validate_specials(
     specials: &[SpecialToken<'_>],
-    ordinary_count: u32,
+    ordinary: &[(u32, Vec<u8>)],
 ) -> Result<(), ConvertError> {
     let mut ids = BTreeSet::new();
     let mut bytes = BTreeSet::new();
     for special in specials {
-        if special.id < ordinary_count {
+        if ordinary
+            .binary_search_by_key(&special.id, |(rank, _)| *rank)
+            .is_ok()
+        {
             return Err(ConvertError::SpecialIdCollision(special.id));
         }
         if !ids.insert(special.id) {
@@ -299,6 +302,27 @@ fn validate_specials(
         if !bytes.insert(special.bytes) {
             return Err(ConvertError::DuplicateSpecialBytes);
         }
+    }
+    Ok(())
+}
+
+fn validate_rank_domain(
+    ordinary: &[(u32, Vec<u8>)],
+    specials: &[SpecialToken<'_>],
+) -> Result<(), ConvertError> {
+    let special_ids: BTreeSet<_> = specials.iter().map(|token| token.id).collect();
+    let mut expected = 0_u32;
+    for (actual, _) in ordinary {
+        while expected < *actual {
+            if !special_ids.contains(&expected) {
+                return Err(ConvertError::NonContiguousRank {
+                    expected,
+                    actual: *actual,
+                });
+            }
+            expected = expected.checked_add(1).ok_or(ConvertError::SizeOverflow)?;
+        }
+        expected = actual.checked_add(1).ok_or(ConvertError::SizeOverflow)?;
     }
     Ok(())
 }
@@ -323,24 +347,25 @@ fn encode_specials(specials: &[SpecialToken<'_>]) -> Vec<u8> {
 fn verify_mapping(
     bytes: &[u8],
     source: &[Option<Vec<u8>>],
-    ordinary_count: u32,
+    ordinary: &[(u32, Vec<u8>)],
 ) -> Result<(), ConvertError> {
     let file = ValidatedFile::read(bytes)
         .map_err(|error| ConvertError::Write(WriteError::SelfValidation(error)))?;
+    let expected_lookup: BTreeMap<_, _> = ordinary
+        .iter()
+        .map(|(id, token)| (token.as_slice(), *id))
+        .collect();
     let mut lookup = BTreeMap::new();
     for (id, token) in file.tokens() {
         let expected = source[id as usize].as_deref().unwrap_or_default();
         if token != expected {
             return Err(ConvertError::RoundTripId(id));
         }
-        if id < ordinary_count {
+        if expected_lookup.get(token) == Some(&id) {
             lookup.insert(token, id);
         }
     }
-    for id in 0..ordinary_count {
-        let token = source[id as usize]
-            .as_deref()
-            .ok_or(ConvertError::RoundTripId(id))?;
+    for (token, id) in expected_lookup {
         if lookup.get(token) != Some(&id) {
             return Err(ConvertError::RoundTripLookup(id));
         }

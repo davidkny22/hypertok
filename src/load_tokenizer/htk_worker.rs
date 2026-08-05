@@ -606,6 +606,7 @@ fn pretokenizer_tag(value: PretokenizerType) -> u8 {
         PretokenizerType::O200k => 6,
         PretokenizerType::Nemotron => 7,
         PretokenizerType::Kimi => 8,
+        PretokenizerType::CohereCommand => 9,
     }
 }
 
@@ -620,6 +621,7 @@ fn pretokenizer_from_tag(tag: u8) -> Result<PretokenizerType, WorkerImageError> 
         6 => PretokenizerType::O200k,
         7 => PretokenizerType::Nemotron,
         8 => PretokenizerType::Kimi,
+        9 => PretokenizerType::CohereCommand,
         value => return Err(WorkerImageError::UnknownPretokenizer(value)),
     })
 }
@@ -820,7 +822,7 @@ mod tests {
 
     #[test]
     fn header_mutations_are_refused() {
-        for (offset, value) in [(4, 2), (6, 9), (7, 9), (9, 1)] {
+        for (offset, value) in [(4, 2), (6, 9), (7, 10), (9, 1)] {
             let mut image = model().to_bytes();
             image[offset] = value;
             redigest(&mut image);

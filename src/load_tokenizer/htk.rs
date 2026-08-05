@@ -616,12 +616,14 @@ fn reconstruct_exhaustive_ranked_merges<T: AsRef<[u8]>>(
     vocab: &[T],
     priorities: &[u32],
     non_products: &BTreeSet<u32>,
-    specials: &BTreeSet<u32>,
+    lookup_excluded: &BTreeSet<u32>,
 ) -> Result<RankedMerges, HtkLoadError> {
     let by_token: HashMap<&[u8], TokenId, FxBuildHasher> = vocab
         .iter()
         .enumerate()
-        .filter(|(id, token)| !token.as_ref().is_empty() && !specials.contains(&(*id as u32)))
+        .filter(|(id, token)| {
+            !token.as_ref().is_empty() && !lookup_excluded.contains(&(*id as u32))
+        })
         .map(|(id, token)| (token.as_ref(), TokenId::from(id as u32)))
         .collect();
     let mut merges = RankedMerges::with_hasher(FxBuildHasher);
@@ -704,6 +706,12 @@ fn build_sentencepiece(
     let mut non_products = special_ids.clone();
     non_products.extend(byte_fallback.iter().copied());
     non_products.extend(base.values().copied());
+    let exhaustive_splits = file.header().flags & BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG != 0;
+    if exhaustive_splits && priorities.is_none() {
+        return Err(HtkLoadError::InvalidModel(
+            "exhaustive split reconstruction requires PRIORITY",
+        ));
+    }
     let default_priorities;
     let priorities = match priorities {
         Some(priorities) => {
@@ -719,9 +727,15 @@ fn build_sentencepiece(
             &default_priorities
         }
     };
-    let merges = reconstruct_ranked_merges(&vocab, priorities, &non_products, |token| {
-        sentencepiece_initial_symbols(token, &base, &byte_fallback_ids)
-    })?;
+    let merges = if exhaustive_splits {
+        let mut lookup_excluded = special_ids.clone();
+        lookup_excluded.extend(byte_fallback.iter().copied());
+        reconstruct_exhaustive_ranked_merges(&vocab, priorities, &non_products, &lookup_excluded)?
+    } else {
+        reconstruct_ranked_merges(&vocab, priorities, &non_products, |token| {
+            sentencepiece_initial_symbols(token, &base, &byte_fallback_ids)
+        })?
+    };
     #[cfg(feature = "opt-resident-diet")]
     let vocab: Vec<TokenBytes> = vocab;
     #[cfg(not(feature = "opt-resident-diet"))]
@@ -783,7 +797,7 @@ fn build_sentencepiece(
             special
         })
         .collect();
-    validate_sentencepiece_decoder(file)?;
+    validate_sentencepiece_decoder(file, model.prepends_space())?;
     if file.header().flags & 1 != 0 {
         return Err(HtkLoadError::Unsupported(
             "sentencepiece direct pretoken emission",
@@ -850,6 +864,9 @@ fn configure_byte_pipeline(
         Some(value) if value == NamedPattern::Kimi.value() => PretokenizerType::Kimi,
         Some(value) if value == NamedPattern::Gpt2.value() => PretokenizerType::GPT2,
         Some(value) if value == NamedPattern::Cl100kBase.value() => PretokenizerType::GPT4,
+        Some(value) if value == NamedPattern::CohereCommand.value() => {
+            PretokenizerType::CohereCommand
+        }
         _ => return Err(HtkLoadError::Unsupported("named split pattern")),
     };
     tokenizer.set_pretokenizer_type(scheme);
@@ -935,7 +952,10 @@ fn validate_empty_decoder(file: &ValidatedFile<'_>) -> Result<(), HtkLoadError> 
 }
 
 #[cfg(any(feature = "sentencepiece", feature = "sentencepiece-core"))]
-fn validate_sentencepiece_decoder(file: &ValidatedFile<'_>) -> Result<(), HtkLoadError> {
+fn validate_sentencepiece_decoder(
+    file: &ValidatedFile<'_>,
+    prepends_space: bool,
+) -> Result<(), HtkLoadError> {
     let decoder = file
         .section(SectionId::Decoder.value())
         .ok_or(HtkLoadError::InvalidModel(
@@ -964,12 +984,14 @@ fn validate_sentencepiece_decoder(file: &ValidatedFile<'_>) -> Result<(), HtkLoa
             }
         }
     }
-    let expected = [
+    let mut expected = vec![
         DecoderStepKind::Replace.value(),
         DecoderStepKind::ByteFallback.value(),
         DecoderStepKind::Fuse.value(),
-        DecoderStepKind::Strip.value(),
     ];
+    if prepends_space {
+        expected.push(DecoderStepKind::Strip.value());
+    }
     if kinds != expected {
         return Err(HtkLoadError::Unsupported("sentencepiece decoder sequence"));
     }

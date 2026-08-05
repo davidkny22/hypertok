@@ -59,6 +59,7 @@ pub enum NamedPattern {
     Kimi = 5,
     Gpt2 = 6,
     Cl100kBase = 7,
+    CohereCommand = 8,
 }
 
 impl NamedPattern {
@@ -79,6 +80,7 @@ impl TryFrom<u32> for NamedPattern {
             5 => Ok(Self::Kimi),
             6 => Ok(Self::Gpt2),
             7 => Ok(Self::Cl100kBase),
+            8 => Ok(Self::CohereCommand),
             _ => Err(ReadError::UnknownNamedPattern(value)),
         }
     }

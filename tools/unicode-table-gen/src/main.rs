@@ -44,6 +44,14 @@ enum KimiCharClass {
     HanOther = 9,
 }
 
+#[derive(Clone, Copy)]
+#[repr(u8)]
+enum CommandCharClass {
+    Other = 0,
+    Word = 1,
+    Decimal = 2,
+}
+
 fn pack_quarters(classes: &[u8]) -> Vec<u8> {
     classes
         .chunks_exact(4)
@@ -142,6 +150,29 @@ fn kimi_classes(mut classes: Vec<u8>) -> Vec<u8> {
     classes
 }
 
+fn command_classes() -> Vec<u8> {
+    let mut classes = vec![CommandCharClass::Other as u8; CODE_POINT_COUNT];
+    let gc = CodePointMapData::<GeneralCategory>::new();
+    for group in [
+        GeneralCategoryGroup::Letter,
+        GeneralCategoryGroup::Mark,
+        GeneralCategoryGroup::Number,
+    ] {
+        for range in gc.iter_ranges_for_group(group) {
+            classes[*range.start() as usize..=*range.end() as usize]
+                .fill(CommandCharClass::Word as u8);
+        }
+    }
+    for range in gc.iter_ranges_for_value(GeneralCategory::ConnectorPunctuation) {
+        classes[*range.start() as usize..=*range.end() as usize].fill(CommandCharClass::Word as u8);
+    }
+    for range in gc.iter_ranges_for_value(GeneralCategory::DecimalNumber) {
+        classes[*range.start() as usize..=*range.end() as usize]
+            .fill(CommandCharClass::Decimal as u8);
+    }
+    classes
+}
+
 fn write(output: &Path, name: &str, bytes: &[u8]) {
     let path = output.join(name);
     std::fs::write(&path, bytes).unwrap_or_else(|error| {
@@ -163,6 +194,7 @@ fn main() {
     let deepseek = deepseek_classes();
     let o200k = o200k_classes();
     let kimi = kimi_classes(o200k.clone());
+    let command = command_classes();
 
     write(output, "char_class_icu4x_2_2_0.bin", &pack_quarters(&base));
     write(
@@ -172,4 +204,9 @@ fn main() {
     );
     write(output, "o200k_class_icu4x_2_2_0.bin", &pack_nibbles(&o200k));
     write(output, "kimi_class_icu4x_2_2_0.bin", &pack_nibbles(&kimi));
+    write(
+        output,
+        "command_class_icu4x_2_2_0.bin",
+        &pack_quarters(&command),
+    );
 }

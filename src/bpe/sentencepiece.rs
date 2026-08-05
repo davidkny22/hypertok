@@ -395,7 +395,7 @@ impl SentencePieceBPE {
 
     /// Whether encoding puts a ▁ in front of ordinary text , decode then
     /// strips the resulting leading space, like HF's decoder does.
-    fn prepends_space(&self) -> bool {
+    pub(crate) fn prepends_space(&self) -> bool {
         self.metaspace
             .as_ref()
             .is_some_and(|ms| ms.prepend != PrependScheme::Never)

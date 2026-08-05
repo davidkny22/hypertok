@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::env;
 
 use hypertok_converter::{JsonConversionError, convert_tokenizer_json};
+use hypertok_format::{BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG, ValidatedFile};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
@@ -14,6 +15,102 @@ fn valid_sentencepiece_control_converts() {
     assert_eq!(conversion.vocab_size, 257);
     assert_eq!(conversion.key_set_size, 0);
     assert!(!conversion.priority_present);
+}
+
+#[test]
+fn sentencepiece_space_split_is_accepted_only_after_space_replacement() {
+    let mut source = control();
+    source["normalizer"] = json!({
+        "type": "Replace",
+        "pattern": {"String": " "},
+        "content": "▁"
+    });
+    source["pre_tokenizer"] = json!({
+        "type": "Split",
+        "pattern": {"String": " "},
+        "behavior": "MergedWithPrevious",
+        "invert": false
+    });
+    let bytes = serialize(source.clone());
+    convert_tokenizer_json(&bytes, Sha256::digest(&bytes).into())
+        .expect("post-normalization space split is inert");
+
+    source["normalizer"]["content"] = json!("_");
+    let bytes = serialize(source);
+    assert!(matches!(
+        convert_tokenizer_json(&bytes, Sha256::digest(&bytes).into()),
+        Err(JsonConversionError::Unsupported("pre_tokenizer"))
+    ));
+}
+
+#[test]
+fn sentencepiece_unreachable_rows_are_carried_but_never_mergeable() {
+    let mut source = control();
+    source["model"]["vocab"]["<unused0>"] = json!(257);
+    source["model"]["vocab"]["x"] = json!(258);
+    source["model"]["vocab"]["x<unused0>"] = json!(259);
+    source["model"]["merges"] = json!([["x", "<unused0>"]]);
+    let bytes = serialize(source);
+    let conversion = convert_tokenizer_json(&bytes, Sha256::digest(&bytes).into())
+        .expect("unreachable carried row must remain representable");
+
+    assert_eq!(conversion.vocab_size, 260);
+    assert!(conversion.priority_present);
+}
+
+#[test]
+fn sentencepiece_duplicate_products_require_exhaustive_split_coverage() {
+    let mut complete = control();
+    for (token, id) in [
+        ("a", 257),
+        ("b", 258),
+        ("c", 259),
+        ("ab", 260),
+        ("bc", 261),
+        ("abc", 262),
+    ] {
+        complete["model"]["vocab"][token] = json!(id);
+    }
+    complete["model"]["merges"] = json!([["a", "b"], ["b", "c"], ["a", "bc"], ["ab", "c"]]);
+    let bytes = serialize(complete);
+    let conversion = convert_tokenizer_json(&bytes, Sha256::digest(&bytes).into())
+        .expect("complete duplicate-product coverage must convert");
+    let file = ValidatedFile::read(&conversion.bytes).expect("conversion self-validates");
+    assert_ne!(file.header().flags & BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG, 0);
+
+    let mut incomplete = control();
+    for (token, id) in [
+        ("a", 257),
+        ("b", 258),
+        ("c", 259),
+        ("d", 260),
+        ("ab", 261),
+        ("bc", 262),
+        ("cd", 263),
+        ("abc", 264),
+        ("bcd", 265),
+        ("abcd", 266),
+    ] {
+        incomplete["model"]["vocab"][token] = json!(id);
+    }
+    incomplete["model"]["merges"] = json!([
+        ["a", "b"],
+        ["b", "c"],
+        ["c", "d"],
+        ["a", "bc"],
+        ["ab", "c"],
+        ["b", "cd"],
+        ["bc", "d"],
+        ["a", "bcd"],
+        ["ab", "cd"]
+    ]);
+    let bytes = serialize(incomplete);
+    assert!(matches!(
+        convert_tokenizer_json(&bytes, Sha256::digest(&bytes).into()),
+        Err(JsonConversionError::Unsupported(
+            "duplicate-product merge coverage"
+        ))
+    ));
 }
 
 #[test]

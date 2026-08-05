@@ -155,7 +155,7 @@ const testPage = `<!doctype html>
     const trailing = new Uint8Array(workerImage.length + 1);
     trailing.set(workerImage);
     mutations.push({ image: await redigest(trailing), digest: sourceDigest });
-    for (const [offset, value] of [[4, 2], [6, 9], [7, 9], [9, 1]]) {
+    for (const [offset, value] of [[4, 2], [6, 9], [7, 10], [9, 1]]) {
       const image = workerImage.slice();
       image[offset] = value;
       mutations.push({ image: await redigest(image), digest: sourceDigest });

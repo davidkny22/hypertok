@@ -8,6 +8,8 @@ use sha2::{Digest, Sha256};
 const QWEN35: &str = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?[\p{L}\p{M}]+|\p{N}| ?[^\s\p{L}\p{M}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+";
 const NEMOTRON: &str = r"[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n/]*|\s*[\r\n]+|\s+(?!\S)|\s+";
 const LLAMA3_CL100K: &str = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+";
+const O200K: &str = r"[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*(?i:'s|'t|'re|'ve|'m|'ll|'d)?|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n/]*|\s*[\r\n]+|\s+(?!\S)|\s+";
+const RIGHT_GROUP_DIGITS: &str = r"\d{1,3}(?=(?:\d{3})*\b)";
 
 #[test]
 fn byte_aliases_added_ids_nfc_and_non_products_round_trip() {
@@ -70,6 +72,83 @@ fn bare_byte_level_regex_selects_gpt2() {
     let conversion = convert_tokenizer_json(&source, Sha256::digest(&source).into()).unwrap();
     let file = ValidatedFile::read(&conversion.bytes).unwrap();
     assert_eq!(pretok_pattern(&file), NamedPattern::Gpt2.value());
+}
+
+#[test]
+fn removed_inverted_o200k_split_and_absent_postprocessor_are_exactly_admitted() {
+    let mut source = fixture(O200K, false, false, false);
+    source["pre_tokenizer"]["pretokenizers"][0]["behavior"] = json!("Removed");
+    source["pre_tokenizer"]["pretokenizers"][0]["invert"] = json!(true);
+    source["post_processor"] = Value::Null;
+    let bytes = serde_json::to_vec(&source).unwrap();
+    let conversion = convert_tokenizer_json(&bytes, Sha256::digest(&bytes).into()).unwrap();
+    let file = ValidatedFile::read(&conversion.bytes).unwrap();
+    assert_eq!(pretok_pattern(&file), NamedPattern::O200kBase.value());
+    assert!(file.section(SectionId::Post.value()).is_none());
+
+    source["pre_tokenizer"]["pretokenizers"][0]["invert"] = json!(false);
+    let bytes = serde_json::to_vec(&source).unwrap();
+    assert!(matches!(
+        convert_tokenizer_json(&bytes, Sha256::digest(&bytes).into()),
+        Err(JsonConversionError::Unsupported("byte-BPE split behavior"))
+    ));
+}
+
+#[test]
+fn command_split_and_template_envelope_are_exactly_admitted() {
+    let mut source = fixture(O200K, false, false, false);
+    let o200k = source["pre_tokenizer"]["pretokenizers"][0].clone();
+    let byte_level = source["pre_tokenizer"]["pretokenizers"][1].clone();
+    source["pre_tokenizer"]["pretokenizers"] = json!([
+        {
+            "type": "Split",
+            "pattern": {"Regex": RIGHT_GROUP_DIGITS},
+            "behavior": "Isolated",
+            "invert": false
+        },
+        o200k,
+        byte_level
+    ]);
+    source["added_tokens"][0]["special"] = json!(true);
+    let duplicate = source["added_tokens"][0].clone();
+    source["added_tokens"]
+        .as_array_mut()
+        .unwrap()
+        .push(duplicate);
+    source["post_processor"] = command_postprocessor();
+    let bytes = serde_json::to_vec(&source).unwrap();
+    let conversion = convert_tokenizer_json(&bytes, Sha256::digest(&bytes).into()).unwrap();
+    let file = ValidatedFile::read(&conversion.bytes).unwrap();
+    assert_eq!(pretok_pattern(&file), NamedPattern::CohereCommand.value());
+    let post = file.section(SectionId::Post.value()).unwrap();
+    assert_eq!(u32::from_le_bytes(post[..4].try_into().unwrap()), 1);
+    assert_eq!(u32::from_le_bytes(post[5..9].try_into().unwrap()), 258);
+
+    let mut conflicting_duplicate = source.clone();
+    conflicting_duplicate["added_tokens"][1]["content"] = json!("<different>");
+    let bytes = serde_json::to_vec(&conflicting_duplicate).unwrap();
+    assert!(matches!(
+        convert_tokenizer_json(&bytes, Sha256::digest(&bytes).into()),
+        Err(JsonConversionError::InvalidId(258))
+    ));
+
+    source["pre_tokenizer"]["pretokenizers"][0]["pattern"]["Regex"] =
+        json!(r"\d{1,4}(?=(?:\d{4})*\b)");
+    let bytes = serde_json::to_vec(&source).unwrap();
+    assert!(matches!(
+        convert_tokenizer_json(&bytes, Sha256::digest(&bytes).into()),
+        Err(JsonConversionError::Unsupported("named split pattern"))
+    ));
+
+    source["pre_tokenizer"]["pretokenizers"][0]["pattern"]["Regex"] = json!(RIGHT_GROUP_DIGITS);
+    source["post_processor"]["trim_offsets"] = json!(true);
+    let bytes = serde_json::to_vec(&source).unwrap();
+    assert!(matches!(
+        convert_tokenizer_json(&bytes, Sha256::digest(&bytes).into()),
+        Err(JsonConversionError::Unsupported(
+            "byte-BPE postprocessor template options"
+        ))
+    ));
 }
 
 #[test]
@@ -255,6 +334,29 @@ fn llama_sequence_postprocessor() -> Value {
                 }
             }
         ]
+    })
+}
+
+fn command_postprocessor() -> Value {
+    json!({
+        "type": "TemplateProcessing",
+        "add_prefix_space": true,
+        "trim_offsets": false,
+        "use_regex": true,
+        "single": [
+            {"SpecialToken": {"id": "<added>", "type_id": 0}},
+            {"Sequence": {"id": "A", "type_id": 0}}
+        ],
+        "pair": [
+            {"SpecialToken": {"id": "<added>", "type_id": 0}},
+            {"Sequence": {"id": "A", "type_id": 0}},
+            {"Sequence": {"id": "B", "type_id": 1}},
+            {"SpecialToken": {"id": "<added>", "type_id": 1}},
+            {"SpecialToken": {"id": "<added>", "type_id": 1}}
+        ],
+        "special_tokens": {
+            "<added>": {"id": "<added>", "ids": [258], "tokens": ["<added>"]}
+        }
     })
 }
 

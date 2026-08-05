@@ -11,13 +11,14 @@ The `PRETOK` named-pattern payload stores one little-endian `u32` identifier.
 
 | Identifier | Pattern |
 | ---: | --- |
-| 1 | GPT-2 |
-| 2 | Qwen 2.5 |
-| 3 | Qwen 3.5 |
-| 4 | Mistral Tekken |
-| 5 | DeepSeek V3 |
-| 6 | Kimi K2 |
+| 1 | o200k_base |
+| 2 | Qwen 3.5 |
+| 3 | Nemotron 3 |
+| 4 | DeepSeek V3 |
+| 5 | Kimi K2 |
+| 6 | GPT-2 |
 | 7 | cl100k_base |
+| 8 | Cohere Command A+ |
 
 Each identifier selects the matching built-in scanner. A reader that does not implement an
 identifier must refuse the file, so no file can be silently interpreted with another scanner.

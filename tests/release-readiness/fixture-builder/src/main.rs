@@ -10,14 +10,11 @@ fn push_string(output: &mut Vec<u8>, value: &str) {
 }
 
 fn decoder() -> Vec<u8> {
-    let mut bytes = 4_u32.to_le_bytes().to_vec();
+    let mut bytes = 3_u32.to_le_bytes().to_vec();
     bytes.push(0);
     push_string(&mut bytes, "\u{2581}");
     push_string(&mut bytes, " ");
-    bytes.extend_from_slice(&[1, 2, 3]);
-    bytes.extend_from_slice(&(b' ' as u32).to_le_bytes());
-    bytes.extend_from_slice(&1_u32.to_le_bytes());
-    bytes.extend_from_slice(&0_u32.to_le_bytes());
+    bytes.extend_from_slice(&[1, 2]);
     bytes
 }
 

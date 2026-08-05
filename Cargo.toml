@@ -95,6 +95,11 @@ name = "verify_vocabulary_mapping"
 path = "tests/bijection-round-trip/launch-verify/src/main.rs"
 required-features = ["htk", "source-loaders"]
 
+[[example]]
+name = "verify_vocab_package"
+path = "tests/bijection-round-trip/package-verify/src/main.rs"
+required-features = ["htk", "sentencepiece"]
+
 [profile.release]
 lto = "fat"
 

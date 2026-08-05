@@ -30,6 +30,28 @@ fn decoded_rank_bytes_round_trip_in_both_directions() {
 }
 
 #[test]
+fn a_rank_gap_is_accepted_only_when_a_declared_special_fills_it() {
+    let mut source = byte_rank_source();
+    source.extend_from_slice(format!("{} 257\n", STANDARD.encode([0, 1])).as_bytes());
+    let specials = [SpecialToken {
+        bytes: b"<gap>",
+        id: 256,
+        flags: 0,
+    }];
+    let definition = TiktokenDefinition {
+        pattern: NamedPattern::Gpt2,
+        special_tokens: &specials,
+    };
+    let conversion = convert_tiktoken(&source, Sha256::digest(&source).into(), &definition)
+        .expect("declared special fills the rank gap");
+    let file = ValidatedFile::read(&conversion.bytes).expect("conversion reads back");
+    assert_eq!(file.tokens().nth(256), Some((256, b"<gap>".as_slice())));
+    assert_eq!(conversion.source_token_count, 257);
+    assert_eq!(conversion.key_set_size, 257);
+    assert_eq!(conversion.gap_count, 0);
+}
+
+#[test]
 fn no_output_value_exists_after_source_failures() {
     let source = byte_rank_source();
     let definition = definition();

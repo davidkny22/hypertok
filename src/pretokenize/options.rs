@@ -1,7 +1,7 @@
 use crate::pretokenize::Pretoken;
 use crate::pretokenize::fast::{
-    FastCl100kPretokenizer, FastDeepSeekV3Pretokenizer, FastKimiPretokenizer,
-    FastNemotronPretokenizer, FastO200kPretokenizer, FastOlmo3Pretokenizer,
+    FastCl100kPretokenizer, FastCohereCommandPretokenizer, FastDeepSeekV3Pretokenizer,
+    FastKimiPretokenizer, FastNemotronPretokenizer, FastO200kPretokenizer, FastOlmo3Pretokenizer,
     FastQwen2Pretokenizer, FastQwen35Pretokenizer, FastR50kPretokenizer,
 };
 
@@ -17,6 +17,7 @@ pub enum PretokenizerType {
     O200k,      // o200k_base: case-structured letter runs; GPT-4o, gpt-oss
     Nemotron,   // o200k without contractions, single-digit \p{N}; nvidia Nemotron-3
     Kimi,       // o200k with [\p{Han}]+ runs and no `/` tail absorption; moonshotai Kimi-K2 line
+    CohereCommand, // right-grouped decimal runs followed by o200k; Cohere Command A+
 }
 
 /// The three Split regexes of the DeepSeek V3/V4 pre_tokenizer Sequence, as
@@ -63,13 +64,16 @@ impl PretokenizerType {
             PretokenizerType::Kimi => {
                 FastPretokenizerDispatch::Kimi(FastKimiPretokenizer::new(bytes))
             }
+            PretokenizerType::CohereCommand => {
+                FastPretokenizerDispatch::CohereCommand(FastCohereCommandPretokenizer::new(bytes))
+            }
         }
     }
 
     /// The canonical name of each variant, in variant order , the
     /// identifiers `from_name` accepts (plus the aliases listed there).
     /// Error messages naming the valid schemes derive from this list.
-    pub const NAMES: [&'static str; 9] = [
+    pub const NAMES: [&'static str; 10] = [
         "gpt2",
         "gpt4",
         "qwen2",
@@ -79,6 +83,7 @@ impl PretokenizerType {
         "o200k",
         "nemotron",
         "kimi",
+        "cohere_command",
     ];
 
     /// The scheme named by a lowercase identifier, as used by loaders whose
@@ -96,6 +101,7 @@ impl PretokenizerType {
             "o200k" => PretokenizerType::O200k,
             "nemotron" => PretokenizerType::Nemotron,
             "kimi" => PretokenizerType::Kimi,
+            "cohere_command" => PretokenizerType::CohereCommand,
             _ => return None,
         })
     }
@@ -107,6 +113,12 @@ impl PretokenizerType {
         match patterns {
             [p] => Self::from_split_regex(p),
             _ if patterns == DEEPSEEK_V3_SPLIT_REGEXES => Some(PretokenizerType::DeepSeekV3),
+            [digits, o200k]
+                if *digits == r"\d{1,3}(?=(?:\d{3})*\b)"
+                    && Self::from_split_regex(o200k) == Some(PretokenizerType::O200k) =>
+            {
+                Some(PretokenizerType::CohereCommand)
+            }
             _ => None,
         }
     }
@@ -154,6 +166,7 @@ pub enum FastPretokenizerDispatch<'a> {
     O200k(FastO200kPretokenizer<'a>),
     Nemotron(FastNemotronPretokenizer<'a>),
     Kimi(FastKimiPretokenizer<'a>),
+    CohereCommand(FastCohereCommandPretokenizer<'a>),
 }
 
 impl<'a> Iterator for FastPretokenizerDispatch<'a> {
@@ -171,6 +184,7 @@ impl<'a> Iterator for FastPretokenizerDispatch<'a> {
             FastPretokenizerDispatch::O200k(it) => it.next(),
             FastPretokenizerDispatch::Nemotron(it) => it.next(),
             FastPretokenizerDispatch::Kimi(it) => it.next(),
+            FastPretokenizerDispatch::CohereCommand(it) => it.next(),
         }
     }
 }
@@ -197,7 +211,7 @@ unsafe impl<'a> crate::pretokenize::PretokenSpans<'a> for FastPretokenizerDispat
             FastPretokenizerDispatch::O200k(it) => it.fill_spans_keyed(batch, prefetch),
             FastPretokenizerDispatch::Nemotron(it) => it.fill_spans_keyed(batch, prefetch),
             FastPretokenizerDispatch::Kimi(it) => it.fill_spans_keyed(batch, prefetch),
+            FastPretokenizerDispatch::CohereCommand(it) => it.fill_spans_keyed(batch, prefetch),
         }
     }
 }
-

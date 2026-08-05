@@ -5,6 +5,8 @@ const O200K_CLASS_TABLE: &[u8; 0x110000 / 2] =
     include_bytes!("generated/o200k_class_icu4x_2_2_0.bin");
 const KIMI_CLASS_TABLE: &[u8; 0x110000 / 2] =
     include_bytes!("generated/kimi_class_icu4x_2_2_0.bin");
+const COMMAND_CLASS_TABLE: &[u8; 0x110000 / 4] =
+    include_bytes!("generated/command_class_icu4x_2_2_0.bin");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -205,6 +207,27 @@ pub(crate) fn kimi_class_of(cp: u32) -> KimiCharClass {
         7 => KimiCharClass::Han,
         8 => KimiCharClass::HanNumber,
         _ => KimiCharClass::HanOther,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub(crate) enum CommandCharClass {
+    Other = 0,
+    Word = 1,
+    Decimal = 2,
+}
+
+#[inline(always)]
+pub(crate) fn command_class_of(cp: u32) -> CommandCharClass {
+    debug_assert!(cp < 0x110000);
+    // SAFETY: the included two-bit table covers every code point, and the
+    // caller contract restricts cp to that range.
+    let byte = unsafe { *COMMAND_CLASS_TABLE.get_unchecked((cp >> 2) as usize) };
+    match (byte >> ((cp & 3) << 1)) & 3 {
+        1 => CommandCharClass::Word,
+        2 => CommandCharClass::Decimal,
+        _ => CommandCharClass::Other,
     }
 }
 

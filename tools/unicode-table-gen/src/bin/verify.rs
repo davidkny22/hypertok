@@ -11,6 +11,8 @@ const O200K_CLASS_TABLE: &[u8; 0x110000 / 2] =
     include_bytes!("../../../../src/pretokenize/generated/o200k_class_icu4x_2_2_0.bin");
 const KIMI_CLASS_TABLE: &[u8; 0x110000 / 2] =
     include_bytes!("../../../../src/pretokenize/generated/kimi_class_icu4x_2_2_0.bin");
+const COMMAND_CLASS_TABLE: &[u8; 0x110000 / 4] =
+    include_bytes!("../../../../src/pretokenize/generated/command_class_icu4x_2_2_0.bin");
 
 fn quarter(table: &[u8], cp: u32) -> u8 {
     (table[(cp >> 2) as usize] >> ((cp & 3) << 1)) & 3
@@ -80,7 +82,24 @@ fn main() {
             o200k
         };
         assert_eq!(nibble(KIMI_CLASS_TABLE, cp), kimi, "kimi U+{cp:04X}");
+
+        let command = if gc == GeneralCategory::DecimalNumber {
+            2
+        } else if GeneralCategoryGroup::Letter.contains(gc)
+            || GeneralCategoryGroup::Mark.contains(gc)
+            || GeneralCategoryGroup::Number.contains(gc)
+            || gc == GeneralCategory::ConnectorPunctuation
+        {
+            1
+        } else {
+            0
+        };
+        assert_eq!(
+            quarter(COMMAND_CLASS_TABLE, cp),
+            command,
+            "command U+{cp:04X}"
+        );
     }
     assert_eq!(checked, 1_112_064);
-    println!("verified {checked} Unicode scalar values across four tables");
+    println!("verified {checked} Unicode scalar values across five tables");
 }

@@ -23,6 +23,7 @@ pub(crate) mod wasm_simd128;
 pub(crate) mod wasm_relaxed_simd;
 
 pub mod cl100k;
+pub mod cohere_command;
 pub mod deepseek_v3;
 pub mod kimi;
 pub mod nemotron;
@@ -33,6 +34,7 @@ pub mod qwen3_5;
 pub mod r50k;
 
 pub use cl100k::FastCl100kPretokenizer;
+pub use cohere_command::FastCohereCommandPretokenizer;
 pub use deepseek_v3::FastDeepSeekV3Pretokenizer;
 pub use kimi::FastKimiPretokenizer;
 pub use nemotron::FastNemotronPretokenizer;
