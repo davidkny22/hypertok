@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 
 const QWEN35: &str = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?[\p{L}\p{M}]+|\p{N}| ?[^\s\p{L}\p{M}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+";
 const NEMOTRON: &str = r"[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n/]*|\s*[\r\n]+|\s+(?!\S)|\s+";
+const LLAMA3_CL100K: &str = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+";
 
 #[test]
 fn byte_aliases_added_ids_nfc_and_non_products_round_trip() {
@@ -69,6 +70,86 @@ fn bare_byte_level_regex_selects_gpt2() {
     let conversion = convert_tokenizer_json(&source, Sha256::digest(&source).into()).unwrap();
     let file = ValidatedFile::read(&conversion.bytes).unwrap();
     assert_eq!(pretok_pattern(&file), NamedPattern::Gpt2.value());
+}
+
+#[test]
+fn llama_sequence_postprocessor_and_cl100k_pattern_are_encoded() {
+    let mut source = fixture(LLAMA3_CL100K, false, false, false);
+    source["added_tokens"][0]["special"] = json!(true);
+    source["post_processor"] = llama_sequence_postprocessor();
+    let source = serde_json::to_vec(&source).unwrap();
+    let conversion = convert_tokenizer_json(&source, Sha256::digest(&source).into()).unwrap();
+    let file = ValidatedFile::read(&conversion.bytes).unwrap();
+
+    assert_eq!(pretok_pattern(&file), NamedPattern::Cl100kBase.value());
+    let post = file.section(SectionId::Post.value()).unwrap();
+    assert_eq!(u32::from_le_bytes(post[..4].try_into().unwrap()), 1);
+    assert_eq!(post[4], 0);
+    assert_eq!(u32::from_le_bytes(post[5..9].try_into().unwrap()), 258);
+}
+
+#[test]
+fn unsupported_postprocessor_sequences_are_refused() {
+    let mut reversed = fixture(LLAMA3_CL100K, false, false, false);
+    let mut processors = llama_sequence_postprocessor()["processors"]
+        .as_array()
+        .unwrap()
+        .clone();
+    processors.reverse();
+    reversed["post_processor"] = json!({"type": "Sequence", "processors": processors});
+    let source = serde_json::to_vec(&reversed).unwrap();
+    assert!(matches!(
+        convert_tokenizer_json(&source, Sha256::digest(&source).into()),
+        Err(JsonConversionError::Unsupported("byte-BPE postprocessor"))
+    ));
+
+    let mut extra = fixture(LLAMA3_CL100K, false, false, false);
+    let mut processors = llama_sequence_postprocessor()["processors"]
+        .as_array()
+        .unwrap()
+        .clone();
+    processors.push(json!({
+        "type": "ByteLevel",
+        "add_prefix_space": false,
+        "trim_offsets": false,
+        "use_regex": false
+    }));
+    extra["post_processor"] = json!({"type": "Sequence", "processors": processors});
+    let source = serde_json::to_vec(&extra).unwrap();
+    assert!(matches!(
+        convert_tokenizer_json(&source, Sha256::digest(&source).into()),
+        Err(JsonConversionError::Unsupported(
+            "byte-BPE postprocessor sequence"
+        ))
+    ));
+}
+
+#[test]
+fn exhaustive_duplicate_product_merges_require_complete_split_coverage() {
+    let mut source = fixture(LLAMA3_CL100K, false, false, false);
+    source["model"]["vocab"]["bc"] = json!(257);
+    source["model"]["vocab"]["cd"] = json!(258);
+    source["model"]["vocab"]["abc"] = json!(259);
+    source["model"]["vocab"]["bcd"] = json!(260);
+    source["model"]["vocab"]["abcd"] = json!(261);
+    source["added_tokens"][0]["id"] = json!(262);
+    source["model"]["merges"] = json!([
+        "a b", "b c", "c d", "ab c", "a bc", "b cd", "bc d", "abc d", "ab cd", "a bcd"
+    ]);
+    let bytes = serde_json::to_vec(&source).unwrap();
+    let conversion = convert_tokenizer_json(&bytes, Sha256::digest(&bytes).into()).unwrap();
+    let file = ValidatedFile::read(&conversion.bytes).unwrap();
+    assert_eq!(file.header().flags, 2);
+    assert!(conversion.priority_present);
+
+    source["model"]["merges"].as_array_mut().unwrap().pop();
+    let bytes = serde_json::to_vec(&source).unwrap();
+    assert!(matches!(
+        convert_tokenizer_json(&bytes, Sha256::digest(&bytes).into()),
+        Err(JsonConversionError::Unsupported(
+            "duplicate-product merge coverage"
+        ))
+    ));
 }
 
 #[test]
@@ -144,6 +225,36 @@ fn fixture(pattern: &str, ignore_merges: bool, nfc: bool, normalized: bool) -> V
             "vocab": vocab,
             "merges": ["a b"]
         }
+    })
+}
+
+fn llama_sequence_postprocessor() -> Value {
+    json!({
+        "type": "Sequence",
+        "processors": [
+            {
+                "type": "ByteLevel",
+                "add_prefix_space": true,
+                "trim_offsets": false,
+                "use_regex": true
+            },
+            {
+                "type": "TemplateProcessing",
+                "single": [
+                    {"SpecialToken": {"id": "<added>", "type_id": 0}},
+                    {"Sequence": {"id": "A", "type_id": 0}}
+                ],
+                "pair": [
+                    {"SpecialToken": {"id": "<added>", "type_id": 0}},
+                    {"Sequence": {"id": "A", "type_id": 0}},
+                    {"SpecialToken": {"id": "<added>", "type_id": 1}},
+                    {"Sequence": {"id": "B", "type_id": 1}}
+                ],
+                "special_tokens": {
+                    "<added>": {"id": "<added>", "ids": [258], "tokens": ["<added>"]}
+                }
+            }
+        ]
     })
 }
 

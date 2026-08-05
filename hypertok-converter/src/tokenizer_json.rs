@@ -2,8 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use hypertok_format::{
-    DecoderStepKind, HashScheme, MAX_VOCAB_SIZE, NamedPattern, NormStepKind, PostPosition,
-    PretokStepKind, SectionId, StructuralClass, ValidatedFile, encode_u32,
+    BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG, DecoderStepKind, HashScheme, MAX_VOCAB_SIZE, NamedPattern,
+    NormStepKind, PostPosition, PretokStepKind, SectionId, StructuralClass, ValidatedFile,
+    encode_u32,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -243,7 +244,7 @@ fn convert_byte_bpe(parsed: Tokenizer) -> Result<Conversion, JsonConversionError
     }
 
     let (base, base_ids) = derive_byte_base(&slots, &added_ids)?;
-    let (priority, inversions, non_products) = derive_byte_priority(
+    let (priority, inversions, non_products, exhaustive_splits) = derive_byte_priority(
         &parsed.model.merges,
         &parsed.model.vocab,
         &added_ids,
@@ -258,7 +259,7 @@ fn convert_byte_bpe(parsed: Tokenizer) -> Result<Conversion, JsonConversionError
     )?;
     let normalizer = encode_byte_normalizer(parsed.normalizer.as_ref())?;
     validate_byte_decoder(parsed.decoder.as_ref().expect("validated decoder"))?;
-    validate_byte_postprocessor(
+    let post = encode_byte_postprocessor(
         parsed
             .post_processor
             .as_ref()
@@ -292,13 +293,21 @@ fn convert_byte_bpe(parsed: Tokenizer) -> Result<Conversion, JsonConversionError
     if let Some(affix) = encode_byte_affix(&parsed.model)? {
         sections.push(Section::new(SectionId::Affix, affix));
     }
-    if inversions != 0 || non_products != 0 {
+    if let Some(post) = post {
+        sections.push(Section::new(SectionId::Post, post));
+    }
+    if inversions != 0 || non_products != 0 || exhaustive_splits {
         sections.push(Section::new(SectionId::Priority, priority));
     }
     let bytes = write(&Document {
         structural_class: StructuralClass::ByteBpe,
         hash_scheme: HashScheme::None,
-        flags: u8::from(parsed.model.ignore_merges),
+        flags: u8::from(parsed.model.ignore_merges)
+            | if exhaustive_splits {
+                BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG
+            } else {
+                0
+            },
         vocab_size,
         omega,
         sections,
@@ -323,7 +332,7 @@ fn convert_byte_bpe(parsed: Tokenizer) -> Result<Conversion, JsonConversionError
         gap_count: vocab_size - source_token_count,
         omega,
         digest,
-        priority_present: inversions != 0 || non_products != 0,
+        priority_present: inversions != 0 || non_products != 0 || exhaustive_splits,
         priority_inversions: inversions,
     })
 }
@@ -524,6 +533,7 @@ fn encode_byte_pretokenizer(pretokenizer: &PreTokenizer) -> Result<Vec<u8>, Json
 }
 
 fn identify_named_pattern(regexes: &[&str]) -> Option<NamedPattern> {
+    const LLAMA3_CL100K: &str = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+";
     const QWEN35: &str = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?[\p{L}\p{M}]+|\p{N}| ?[^\s\p{L}\p{M}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+";
     const NEMOTRON: &str = r"[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n/]*|\s*[\r\n]+|\s+(?!\S)|\s+";
     const DEEPSEEK: [&str; 3] = [
@@ -532,6 +542,7 @@ fn identify_named_pattern(regexes: &[&str]) -> Option<NamedPattern> {
         "[!\"#$%&'()*+,\\-./:;<=>?@\\[\\\\\\]^_`{|}~][A-Za-z]+|[^\r\n\\p{L}\\p{P}\\p{S}]?[\\p{L}\\p{M}]+| ?[\\p{P}\\p{S}]+[\r\n]*|\\s*[\r\n]+|\\s+(?!\\S)|\\s+",
     ];
     match regexes {
+        [value] if *value == LLAMA3_CL100K => Some(NamedPattern::Cl100kBase),
         [value] if *value == QWEN35 => Some(NamedPattern::Qwen35),
         [value] if *value == NEMOTRON => Some(NamedPattern::Nemotron),
         values if values == DEEPSEEK => Some(NamedPattern::DeepSeekV3),
@@ -569,7 +580,7 @@ fn validate_byte_decoder(decoder: &Decoder) -> Result<(), JsonConversionError> {
     Ok(())
 }
 
-fn validate_byte_postprocessor(post: &PostProcessor) -> Result<(), JsonConversionError> {
+fn validate_byte_level_postprocessor(post: &PostProcessor) -> Result<(), JsonConversionError> {
     let PostProcessor::ByteLevel {
         add_prefix_space,
         trim_offsets,
@@ -585,6 +596,32 @@ fn validate_byte_postprocessor(post: &PostProcessor) -> Result<(), JsonConversio
         ));
     }
     Ok(())
+}
+
+fn encode_byte_postprocessor(post: &PostProcessor) -> Result<Option<Vec<u8>>, JsonConversionError> {
+    match post {
+        PostProcessor::ByteLevel { .. } => {
+            validate_byte_level_postprocessor(post)?;
+            Ok(None)
+        }
+        PostProcessor::Sequence { processors } => {
+            let [byte_level, template] = processors.as_slice() else {
+                return Err(JsonConversionError::Unsupported(
+                    "byte-BPE postprocessor sequence",
+                ));
+            };
+            validate_byte_level_postprocessor(byte_level)?;
+            if !matches!(template, PostProcessor::TemplateProcessing { .. }) {
+                return Err(JsonConversionError::Unsupported(
+                    "byte-BPE postprocessor sequence order",
+                ));
+            }
+            Ok(Some(encode_post(template)?))
+        }
+        PostProcessor::TemplateProcessing { .. } => {
+            Err(JsonConversionError::Unsupported("byte-BPE postprocessor"))
+        }
+    }
 }
 
 fn encode_byte_affix(model: &Model) -> Result<Option<Vec<u8>>, JsonConversionError> {
@@ -781,11 +818,13 @@ fn derive_byte_priority(
     specials: &BTreeSet<u32>,
     base: &BTreeSet<u32>,
     vocab_size: u32,
-) -> Result<(Vec<u8>, u32, u32), JsonConversionError> {
+) -> Result<(Vec<u8>, u32, u32, bool), JsonConversionError> {
     let mut priorities = vec![0_u32; vocab_size as usize];
     let mut reachable = base.clone();
     let mut previous = None;
     let mut inversions = 0_u32;
+    let mut duplicate_products = 0_u32;
+    let mut source_pairs = BTreeSet::new();
     for (index, merge) in merges.iter().enumerate() {
         let (left, right) = merge
             .parts()
@@ -799,6 +838,9 @@ fn derive_byte_priority(
         let id = *vocab
             .get(&format!("{left}{right}"))
             .ok_or(JsonConversionError::InvalidMerge(index))?;
+        if !source_pairs.insert((left_id, right_id, id)) {
+            return Err(JsonConversionError::InvalidMerge(index));
+        }
         if previous.is_some_and(|value| id < value) {
             inversions += 1;
         }
@@ -809,7 +851,11 @@ fn derive_byte_priority(
         }
         let priority = u32::try_from(index + 1).map_err(|_| JsonConversionError::SizeOverflow)?;
         let slot = &mut priorities[id as usize];
-        if *slot == 0 || priority < *slot {
+        if *slot != 0 {
+            duplicate_products = duplicate_products
+                .checked_add(1)
+                .ok_or(JsonConversionError::SizeOverflow)?;
+        } else {
             *slot = priority;
         }
         reachable.insert(id);
@@ -819,11 +865,28 @@ fn derive_byte_priority(
         .count();
     let non_products =
         u32::try_from(non_products).map_err(|_| JsonConversionError::SizeOverflow)?;
+    let exhaustive_splits = duplicate_products != 0;
+    if exhaustive_splits {
+        let mut expected_pairs = BTreeSet::new();
+        for (token, &id) in vocab {
+            for (offset, _) in token.char_indices().skip(1) {
+                let (left, right) = token.split_at(offset);
+                if let (Some(&left_id), Some(&right_id)) = (vocab.get(left), vocab.get(right)) {
+                    expected_pairs.insert((left_id, right_id, id));
+                }
+            }
+        }
+        if source_pairs != expected_pairs {
+            return Err(JsonConversionError::Unsupported(
+                "duplicate-product merge coverage",
+            ));
+        }
+    }
     let mut output = Vec::new();
     for priority in priorities {
         encode_u32(priority, &mut output);
     }
-    Ok((output, inversions, non_products))
+    Ok((output, inversions, non_products, exhaustive_splits))
 }
 
 fn encode_normalizer(normalizer: &Normalizer) -> Result<Vec<u8>, JsonConversionError> {
@@ -1214,6 +1277,9 @@ enum Decoder {
 #[derive(Deserialize)]
 #[serde(tag = "type", deny_unknown_fields)]
 enum PostProcessor {
+    Sequence {
+        processors: Vec<PostProcessor>,
+    },
     TemplateProcessing {
         single: Vec<TemplatePiece>,
         pair: Vec<TemplatePiece>,
