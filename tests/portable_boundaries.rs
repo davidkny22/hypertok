@@ -11,11 +11,13 @@ use hypertok::pretokenize::PretokenizerType;
 #[cfg(feature = "htk")]
 use hypertok::load_tokenizer::htk::{HtkTokenizer, load_htk_slice};
 #[cfg(feature = "htk")]
-use hypertok_converter::{Document, Section, write};
+use hypertok_converter::{Document, Section, TiktokenDefinition, convert_tiktoken, write};
 #[cfg(feature = "htk")]
 use hypertok_format::{
     HashScheme, NamedPattern, NormStepKind, PretokStepKind, SectionId, StructuralClass,
 };
+#[cfg(feature = "htk")]
+use sha2::{Digest, Sha256};
 fn byte_ranks() -> Vec<u8> {
     let mut data = Vec::new();
     for byte in 0u8..=u8::MAX {
@@ -132,6 +134,38 @@ fn portable_htk_loader_applies_nfc() {
         tokenizer.token_starts(input.as_bytes(), &ids).unwrap(),
         vec![0, 0]
     );
+}
+
+#[cfg(feature = "htk")]
+#[test]
+fn cl100k_identifier_reaches_the_cl100k_scanner() {
+    let mut source = byte_ranks();
+    for (token, rank) in [(b"12".as_slice(), 256), (b"123", 257), (b"1234", 258)] {
+        source.extend_from_slice(BASE64_STANDARD.encode(token).as_bytes());
+        source.extend_from_slice(format!(" {rank}\n").as_bytes());
+    }
+    let definition = TiktokenDefinition {
+        pattern: NamedPattern::Cl100kBase,
+        special_tokens: &[],
+    };
+    let conversion =
+        convert_tiktoken(&source, Sha256::digest(&source).into(), &definition).unwrap();
+
+    let mut loaded = load_htk_slice(&conversion.bytes).unwrap();
+    let actual = loaded.tokenizer.encode("1234");
+
+    let mut cl100k = load_tiktoken_slice(&source, PretokenizerType::GPT4, Vec::new()).unwrap();
+    let mut expected = Vec::new();
+    cl100k.encode_with_added_tokens_flat(b"1234", &mut expected);
+
+    let mut gpt2 = load_tiktoken_slice(&source, PretokenizerType::GPT2, Vec::new()).unwrap();
+    let mut wrong_route = Vec::new();
+    gpt2.encode_with_added_tokens_flat(b"1234", &mut wrong_route);
+
+    assert_eq!(actual, expected);
+    assert_eq!(actual, [257, u32::from(b'4')]);
+    assert_eq!(wrong_route, [258]);
+    assert_ne!(actual, wrong_route, "fixture must have routing teeth");
 }
 
 fn gpt2_byte_char(byte: u8) -> char {

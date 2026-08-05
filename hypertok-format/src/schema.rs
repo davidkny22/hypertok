@@ -5,6 +5,8 @@ pub const FORMAT_VERSION: u16 = 1;
 pub const HEADER_LEN: usize = 64;
 pub const SECTION_TABLE_ENTRY_LEN: usize = 16;
 pub const MAX_VOCAB_SIZE: u32 = 1 << 28;
+pub const BYTE_BPE_IGNORE_MERGES_FLAG: u8 = 1;
+pub const BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG: u8 = 1 << 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
@@ -56,6 +58,7 @@ pub enum NamedPattern {
     DeepSeekV3 = 4,
     Kimi = 5,
     Gpt2 = 6,
+    Cl100kBase = 7,
 }
 
 impl NamedPattern {
@@ -75,6 +78,7 @@ impl TryFrom<u32> for NamedPattern {
             4 => Ok(Self::DeepSeekV3),
             5 => Ok(Self::Kimi),
             6 => Ok(Self::Gpt2),
+            7 => Ok(Self::Cl100kBase),
             _ => Err(ReadError::UnknownNamedPattern(value)),
         }
     }

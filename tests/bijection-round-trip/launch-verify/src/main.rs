@@ -40,6 +40,9 @@ struct Metrics {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let arguments: Vec<_> = env::args().skip(1).collect();
+    if arguments.first().map(String::as_str) == Some("--cl100k-family") {
+        return verify_cl100k_family(&arguments[1..]);
+    }
     if arguments.len() != 11 {
         return Err("expected three JSON source/output pairs, then Kimi rank/config/output".into());
     }
@@ -98,6 +101,56 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     println!(
         "launch verifier PASS: new_vocabularies=4/4 slots={vocab_slots} reverse_keys={key_set} runtime_cases=48/48 runtime_bytes={compared_bytes} runtime_ids={compared_ids} mapping_mutations=4/4",
+    );
+    Ok(())
+}
+
+fn verify_cl100k_family(arguments: &[String]) -> Result<(), Box<dyn Error>> {
+    let [cl100k_source, cl100k_htk, llama_source, llama_htk] = arguments else {
+        return Err("expected cl100k source/HTK and Llama source/HTK paths".into());
+    };
+    let cl100k_specials = vec![
+        ("<|endoftext|>".to_owned(), 100_257),
+        ("<|fim_prefix|>".to_owned(), 100_258),
+        ("<|fim_middle|>".to_owned(), 100_259),
+        ("<|fim_suffix|>".to_owned(), 100_260),
+        ("<|endofprompt|>".to_owned(), 100_276),
+    ];
+
+    let cl100k_source_bytes = fs::read(cl100k_source)?;
+    let cl100k_expected = tiktoken_mapping(&cl100k_source_bytes, &cl100k_specials)?;
+    let cl100k_bytes = fs::read(cl100k_htk)?;
+    verify_mapping(&cl100k_expected, &cl100k_bytes)?;
+    require_mapping_mutation_red(&cl100k_expected, &cl100k_bytes, "cl100k")?;
+    let mut cl100k_oracle = load_tiktoken_slice(
+        &cl100k_source_bytes,
+        PretokenizerType::GPT4,
+        cl100k_specials,
+    )?;
+    let mut cl100k_actual = load_htk_slice(&cl100k_bytes)
+        .map_err(|error| format!("cl100k HTK load failed: {error:?}"))?;
+    let (cl100k_runtime_bytes, cl100k_runtime_ids) =
+        compare_runtime(&mut cl100k_oracle, &mut cl100k_actual)?;
+
+    let llama_source_bytes = fs::read(llama_source)?;
+    let llama_expected = tokenizer_json_mapping(&llama_source_bytes)?;
+    let llama_bytes = fs::read(llama_htk)?;
+    verify_mapping(&llama_expected, &llama_bytes)?;
+    require_mapping_mutation_red(&llama_expected, &llama_bytes, "llama3")?;
+    let mut llama_oracle = load_hf_bpe(llama_source)?;
+    let mut llama_actual = load_htk_slice(&llama_bytes)
+        .map_err(|error| format!("Llama 3 HTK load failed: {error:?}"))?;
+    let (llama_runtime_bytes, llama_runtime_ids) =
+        compare_runtime(&mut llama_oracle, &mut llama_actual)?;
+
+    println!(
+        "cl100k-family verifier PASS: vocabularies=2/2 slots={}/{} reverse_keys={}/{} runtime_cases=24/24 runtime_bytes={} runtime_ids={} mapping_mutations=2/2",
+        cl100k_expected.slots.len(),
+        llama_expected.slots.len(),
+        cl100k_expected.lookup.len(),
+        llama_expected.lookup.len(),
+        cl100k_runtime_bytes + llama_runtime_bytes,
+        cl100k_runtime_ids + llama_runtime_ids,
     );
     Ok(())
 }

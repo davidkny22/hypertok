@@ -18,8 +18,9 @@ use crate::bpe::{self, ByteRemapping, MergeScratch, Tokenizer, ranked_merge_key}
 use crate::pretokenize::PretokenizerType;
 use crate::token::TokenId;
 use hypertok_format::{
-    DecoderStepKind, NamedPattern, NormStepKind, PostPosition, PretokStepKind, ReadError,
-    SectionId, StructuralClass, ValidatedFile, decode_u32,
+    BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG, BYTE_BPE_IGNORE_MERGES_FLAG, DecoderStepKind, NamedPattern,
+    NormStepKind, PostPosition, PretokStepKind, ReadError, SectionId, StructuralClass,
+    ValidatedFile, decode_u32,
 };
 use rustc_hash::FxBuildHasher;
 use std::collections::{BTreeSet, HashMap};
@@ -187,7 +188,7 @@ impl From<HtkIndexError> for HtkLoadError {
 /// Validate and reconstruct a tokenizer from in-memory `.htk` bytes.
 pub fn load_htk_slice(bytes: &[u8]) -> Result<LoadedHtk, HtkLoadError> {
     let file = crate::cold_construction::measure("file-validation", || ValidatedFile::read(bytes))?;
-    if file.header().flags & !1 != 0 {
+    if file.header().flags & !(BYTE_BPE_IGNORE_MERGES_FLAG | BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG) != 0 {
         return Err(HtkLoadError::InvalidModel("unknown header flags"));
     }
     let (specials, reserved_catalog, special_ids, byte_fallback_ids, post, priorities) =
@@ -356,6 +357,11 @@ fn build_byte_bpe(
     }
     let special_ids: BTreeSet<u32> = specials.iter().map(|special| special.id).collect();
     validate_key_set(&vocab, &special_ids, &BTreeSet::new())?;
+    if file.header().flags & BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG != 0 && priorities.is_none() {
+        return Err(HtkLoadError::InvalidModel(
+            "exhaustive split reconstruction requires PRIORITY",
+        ));
+    }
     let mut tokenizer = if let Some(priorities) = priorities {
         let mut non_products = special_ids.clone();
         non_products.extend(base);
@@ -365,12 +371,21 @@ fn build_byte_bpe(
             ));
         }
         let merges = crate::cold_construction::measure("merge-replay", || {
-            reconstruct_ranked_merges(&vocab, priorities, &non_products, |token| {
-                token
-                    .iter()
-                    .map(|byte| TokenId::from(base[*byte as usize]))
-                    .collect()
-            })
+            if file.header().flags & BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG != 0 {
+                reconstruct_exhaustive_ranked_merges(
+                    &vocab,
+                    priorities,
+                    &non_products,
+                    &special_ids,
+                )
+            } else {
+                reconstruct_ranked_merges(&vocab, priorities, &non_products, |token| {
+                    token
+                        .iter()
+                        .map(|byte| TokenId::from(base[*byte as usize]))
+                        .collect()
+                })
+            }
         })?;
         let remapping = ByteRemapping::from_byte_vocab(&vocab)
             .map_err(|_| HtkLoadError::InvalidModel("incomplete byte BASE"))?;
@@ -597,6 +612,55 @@ where
     Ok(merges)
 }
 
+fn reconstruct_exhaustive_ranked_merges<T: AsRef<[u8]>>(
+    vocab: &[T],
+    priorities: &[u32],
+    non_products: &BTreeSet<u32>,
+    specials: &BTreeSet<u32>,
+) -> Result<RankedMerges, HtkLoadError> {
+    let by_token: HashMap<&[u8], TokenId, FxBuildHasher> = vocab
+        .iter()
+        .enumerate()
+        .filter(|(id, token)| !token.as_ref().is_empty() && !specials.contains(&(*id as u32)))
+        .map(|(id, token)| (token.as_ref(), TokenId::from(id as u32)))
+        .collect();
+    let mut merges = RankedMerges::with_hasher(FxBuildHasher);
+    for (id, token) in vocab.iter().enumerate() {
+        let token = token.as_ref();
+        let id = id as u32;
+        if token.is_empty() || non_products.contains(&id) || priorities[id as usize] == 0 {
+            continue;
+        }
+        let mut inserted = 0_usize;
+        for split in 1..token.len() {
+            let Some(&left) = by_token.get(&token[..split]) else {
+                continue;
+            };
+            let Some(&right) = by_token.get(&token[split..]) else {
+                continue;
+            };
+            if merges
+                .insert(
+                    ranked_merge_key(left, right),
+                    (TokenId::from(id), priorities[id as usize]),
+                )
+                .is_some()
+            {
+                return Err(HtkLoadError::InvalidModel(
+                    "duplicate exhaustive ranked merge pair",
+                ));
+            }
+            inserted += 1;
+        }
+        if inserted == 0 {
+            return Err(HtkLoadError::InvalidModel(
+                "priority token has no vocabulary-valid split",
+            ));
+        }
+    }
+    Ok(merges)
+}
+
 #[cfg(any(feature = "sentencepiece", feature = "sentencepiece-core"))]
 fn build_sentencepiece(
     file: &ValidatedFile<'_>,
@@ -785,12 +849,13 @@ fn configure_byte_pipeline(
         Some(value) if value == NamedPattern::DeepSeekV3.value() => PretokenizerType::DeepSeekV3,
         Some(value) if value == NamedPattern::Kimi.value() => PretokenizerType::Kimi,
         Some(value) if value == NamedPattern::Gpt2.value() => PretokenizerType::GPT2,
+        Some(value) if value == NamedPattern::Cl100kBase.value() => PretokenizerType::GPT4,
         _ => return Err(HtkLoadError::Unsupported("named split pattern")),
     };
     tokenizer.set_pretokenizer_type(scheme);
     tokenizer.set_add_prefix_space(add_prefix_space);
     tokenizer.set_trim_offsets(trim_offsets);
-    tokenizer.set_ignore_merges(file.header().flags & 1 != 0);
+    tokenizer.set_ignore_merges(file.header().flags & BYTE_BPE_IGNORE_MERGES_FLAG != 0);
     if let Some(norm) = file.section(SectionId::Norm.value()) {
         let mut cursor = 0;
         let count = read_u32_at(norm, &mut cursor);
