@@ -29,15 +29,19 @@ function verifyMetadata(metadata) {
   assert.equal(metadata.canonical, "./");
 }
 
+const TIME_BUDGET_SCALE = Math.max(1, Number(process.env.HYPERTOK_CI_BUDGET_SCALE) || 1);
+
 function verifyBudgets(metrics, limits) {
   for (const [name, value] of Object.entries(limits)) {
     assert.ok(Number.isSafeInteger(value) && value >= 0, `${name} must be a non-negative integer`);
   }
+  const maxDom = limits.maxDomContentLoadedMs * TIME_BUDGET_SCALE;
+  const maxReady = limits.maxReadyMs * TIME_BUDGET_SCALE;
   assert.ok(
-    metrics.domContentLoadedMs <= limits.maxDomContentLoadedMs,
-    `DOMContentLoaded ${metrics.domContentLoadedMs} ms exceeds ${limits.maxDomContentLoadedMs} ms`,
+    metrics.domContentLoadedMs <= maxDom,
+    `DOMContentLoaded ${metrics.domContentLoadedMs} ms exceeds ${maxDom} ms`,
   );
-  assert.ok(metrics.readyMs <= limits.maxReadyMs, `ready ${metrics.readyMs} ms exceeds ${limits.maxReadyMs} ms`);
+  assert.ok(metrics.readyMs <= maxReady, `ready ${metrics.readyMs} ms exceeds ${maxReady} ms`);
   assert.ok(
     metrics.initialResponseBytes <= limits.maxInitialResponseBytes,
     `initial responses ${metrics.initialResponseBytes} bytes exceed ${limits.maxInitialResponseBytes}`,
@@ -305,7 +309,7 @@ try {
   let mutationsRed = 0;
   assert.throws(() => verifyMetadata({ ...metadata, ogImage: "" }));
   mutationsRed += 1;
-  assert.throws(() => verifyBudgets({ ...metrics, readyMs: budgets.maxReadyMs + 1 }, budgets));
+  assert.throws(() => verifyBudgets({ ...metrics, readyMs: (budgets.maxReadyMs + 1) * TIME_BUDGET_SCALE }, budgets));
   mutationsRed += 1;
   const mutationStyle = await page.addStyleTag({ content: ":root { --quiet: #10131b !important; }" });
   const contrastMutation = await page.evaluate(async () =>

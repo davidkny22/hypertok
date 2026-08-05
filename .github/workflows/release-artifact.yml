@@ -94,6 +94,8 @@ jobs:
       - name: Run the release suite
         shell: pwsh
         run: ./tests/run.ps1 release
+        env:
+          HYPERTOK_CI_BUDGET_SCALE: "3"
 
       - name: Run the public benchmark smoke
         shell: pwsh

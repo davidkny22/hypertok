@@ -20,6 +20,7 @@ test("current static WebAssembly loads and exercises every launch vocabulary", a
     ["mistral-tekken.htk", "Tekken tokenizes source_code(value);"],
     ["deepseek-v4.htk", "DeepSeek tokenizes 12345 and punctuation?!"],
     ["kimi-k3.htk", "Kimi tokenizes a browser playground."],
+    ["gpt2.htk", "GPT-2 tokenizes a browser playground exactly."],
   ]);
 
   for (const [name, text] of cases) {
