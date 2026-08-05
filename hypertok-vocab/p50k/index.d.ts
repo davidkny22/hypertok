@@ -1,0 +1,33 @@
+export declare const vocabulary: URL;
+export declare const editVocabulary: URL;
+export declare const metadata: Readonly<{
+  name: "p50k_base";
+  displayName: "OpenAI p50k_base";
+  formatVersion: 1;
+  fileSha256: string;
+  vocabularyDigest: string;
+  vocabSize: 50281;
+  keySetSize: 50280;
+  omega: 128;
+  priorityPresent: false;
+  sourceUrl: string;
+  sourceRevision: string;
+  sourceSha256: string;
+  license: "MIT";
+}>;
+export declare const editMetadata: Readonly<{
+  name: "p50k_edit";
+  displayName: "OpenAI p50k_edit";
+  formatVersion: 1;
+  fileSha256: string;
+  vocabularyDigest: string;
+  vocabSize: 50284;
+  keySetSize: 50280;
+  omega: 128;
+  priorityPresent: false;
+  sourceUrl: string;
+  sourceRevision: string;
+  sourceSha256: string;
+  license: "MIT";
+}>;
+export default vocabulary;

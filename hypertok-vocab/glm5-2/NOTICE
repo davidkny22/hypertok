@@ -1,0 +1,11 @@
+Z.ai GLM-5.2 vocabulary
+
+Source: https://huggingface.co/zai-org/GLM-5.2/resolve/b4734de4facf877f85769a911abafc5283eab3d9/tokenizer.json
+Source revision: zai-org/GLM-5.2@b4734de4facf877f85769a911abafc5283eab3d9
+Source SHA-256: 19e773648cb4e65de8660ea6365e10acca112d42a854923df93db4a6f333a82d
+HTK file SHA-256: 3f381aca611a9d665d43c5b3d72411f02bb909dc665f0ca8ead6a8940c54a9d0
+
+Copyright (c) 2026 Zhipu AI.
+
+The source is distributed under the MIT License included in this package.
+This package is not affiliated with or endorsed by Zhipu AI or Z.ai.

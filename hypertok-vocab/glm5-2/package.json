@@ -1,0 +1,19 @@
+{
+  "name": "@hypertok/vocab-glm5-2",
+  "version": "1.0.0",
+  "description": "Z.ai GLM-5.2 vocabulary for hypertok format version 1",
+  "keywords": ["tokenizer", "vocabulary", "glm", "z.ai", "hypertok"],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.mjs",
+      "default": "./index.mjs"
+    },
+    "./vocab.htk": "./vocab.htk"
+  },
+  "files": ["index.mjs", "index.d.ts", "vocab.htk", "LICENSE", "NOTICE", "README.md"],
+  "sideEffects": false,
+  "license": "MIT",
+  "publishConfig": { "access": "public" }
+}

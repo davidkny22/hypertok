@@ -1,0 +1,11 @@
+NVIDIA Nemotron 3 vocabulary
+
+Source: https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16/resolve/2d59de1cbd51c0adf384eb906b766d1aee0e0517/tokenizer.json
+Source revision: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16@2d59de1cbd51c0adf384eb906b766d1aee0e0517
+Source SHA-256: c6021eb6847e682f89aa52d5eb6e8c7d902a23acfc8137e25211cf84828f1592
+HTK file SHA-256: 1f498097e8d3fcb17458e965dcde3e96fc458ed002807d9a0d04101468d5a63e
+
+Licensed by NVIDIA Corporation under the NVIDIA Nemotron Model License.
+
+The NVIDIA Nemotron Open Model License is included in this package. This package is not
+affiliated with or endorsed by NVIDIA.

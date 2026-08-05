@@ -1,0 +1,19 @@
+{
+  "name": "@hypertok/vocab-gemma4",
+  "version": "1.0.0",
+  "description": "Google Gemma 4 vocabulary for hypertok format version 1",
+  "keywords": ["tokenizer", "vocabulary", "gemma", "hypertok"],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.mjs",
+      "default": "./index.mjs"
+    },
+    "./vocab.htk": "./vocab.htk"
+  },
+  "files": ["index.mjs", "index.d.ts", "vocab.htk", "LICENSE", "NOTICE", "README.md"],
+  "sideEffects": false,
+  "license": "Apache-2.0",
+  "publishConfig": { "access": "public" }
+}

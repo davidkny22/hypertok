@@ -1,0 +1,11 @@
+Cohere Command A+ vocabulary
+
+Source: https://huggingface.co/CohereLabs/command-a-plus-05-2026-bf16/resolve/5fb6fde5fd12ff89356aae552e11883bc49f069b/tokenizer.json
+Source revision: CohereLabs/command-a-plus-05-2026-bf16@5fb6fde5fd12ff89356aae552e11883bc49f069b
+Source SHA-256: 14bd1c49d7d11874921d324986713df4be21cd06060530c497dacef99919b7a5
+HTK file SHA-256: 45fbdf64ea065e53e663ddf0c2ee1921bb03c382913ea33e06a3b80d0c1be3f7
+
+Copyright 2026 Cohere.
+
+The source is distributed under the Apache License 2.0 included in this package.
+This package is not affiliated with or endorsed by Cohere.

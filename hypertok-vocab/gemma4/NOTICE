@@ -1,0 +1,9 @@
+Google Gemma 4 vocabulary
+
+Source: https://huggingface.co/google/gemma-4-E4B/resolve/411aa17b749aa952df1359d2dcea73917a544d9a/tokenizer.json
+Source revision: google/gemma-4-E4B@411aa17b749aa952df1359d2dcea73917a544d9a
+Source SHA-256: 12bac982b793c44b03d52a250a9f0d0b666813da566b910c24a6da0695fd11e6
+HTK file SHA-256: ca4760bc8f7cf29793680e507ed154a3dfa02cb637e6cc87ec5fa5ececa05205
+
+The source is distributed under the Apache License 2.0 included in this package.
+This package is not affiliated with or endorsed by Google.

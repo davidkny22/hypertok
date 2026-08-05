@@ -1,0 +1,20 @@
+{
+  "name": "@hypertok/vocab-p50k",
+  "version": "1.0.0",
+  "description": "OpenAI p50k_base and p50k_edit vocabularies for hypertok format version 1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.mjs",
+      "default": "./index.mjs"
+    },
+    "./vocab.htk": "./vocab.htk",
+    "./p50k-edit.htk": "./p50k-edit.htk"
+  },
+  "files": ["index.mjs", "index.d.ts", "vocab.htk", "p50k-edit.htk", "LICENSE", "NOTICE", "README.md"],
+  "sideEffects": false,
+  "license": "MIT",
+  "publishConfig": { "access": "public" },
+  "keywords": ["tokenizer", "p50k", "p50k_base", "p50k_edit", "tiktoken", "hypertok"]
+}

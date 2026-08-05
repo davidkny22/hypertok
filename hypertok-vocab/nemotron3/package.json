@@ -1,0 +1,19 @@
+{
+  "name": "@hypertok/vocab-nemotron3",
+  "version": "1.0.0",
+  "description": "NVIDIA Nemotron 3 vocabulary for hypertok format version 1",
+  "keywords": ["tokenizer", "vocabulary", "nemotron", "nvidia", "hypertok"],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.mjs",
+      "default": "./index.mjs"
+    },
+    "./vocab.htk": "./vocab.htk"
+  },
+  "files": ["index.mjs", "index.d.ts", "vocab.htk", "LICENSE", "NOTICE", "README.md"],
+  "sideEffects": false,
+  "license": "SEE LICENSE IN LICENSE",
+  "publishConfig": { "access": "public" }
+}

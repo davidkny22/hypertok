@@ -1,0 +1,12 @@
+MiniMax M3 vocabulary
+
+Built with MiniMax M3
+
+Source: https://huggingface.co/MiniMaxAI/MiniMax-M3/resolve/f0e1c1e04d40177e4673a22097036854f536e9c0/tokenizer.json
+Source revision: MiniMaxAI/MiniMax-M3@f0e1c1e04d40177e4673a22097036854f536e9c0
+Source SHA-256: bb1f1626cf01448f1e3b6036d0a061ffc66c91d9046aada14ea23a5441b5ad6e
+HTK file SHA-256: 81eed24ddbabc03221f97c5c46a088bb96efb13afd0fec2036c12aa17f8a51a9
+
+The tokenizer source is distributed under the MiniMax Community License included in this
+package. Its redistribution, commercial-use, notice and prohibited-use conditions continue to
+apply. This package is not affiliated with or endorsed by MiniMax.

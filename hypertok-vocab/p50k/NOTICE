@@ -1,0 +1,10 @@
+OpenAI p50k vocabularies
+
+Source: https://openaipublic.blob.core.windows.net/encodings/p50k_base.tiktoken
+Source revision: openai/tiktoken@08a5f3b2c987ada4fc5aa1f16c643c203fa8acaa
+Source SHA-256: 94b5ca7dff4d00767bc256fdd1b27e5b17361d7b8a5f968547f9f23eb70d2069
+p50k_base HTK SHA-256: fc45b94be11649acf1d29bd2885c2d080810f8ad9f6942b9adbe8c1651e3824e
+p50k_edit HTK SHA-256: ec4fc02da668992fdd11cd304a6cb1c7631e29c3d8de978c2b65a13eb5e3a2da
+
+The source is distributed under the MIT License included in this package.
+This package is not affiliated with or endorsed by OpenAI.

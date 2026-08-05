@@ -17,8 +17,8 @@ const probes = [
   "line one\r\nline two\tNUL:\u0000:end",
 ];
 
-async function assertPackagedRoundTrip(name) {
-  const bytes = await readFile(path.join(root, "hypertok-vocab", name, "vocab.htk"));
+async function assertPackagedRoundTrip(name, file = "vocab.htk") {
+  const bytes = await readFile(path.join(root, "hypertok-vocab", name, file));
   const tokenizer = await fromBytes(bytes, { tier: "single" });
   try {
     for (const input of probes) {
@@ -40,4 +40,29 @@ test("the six previously shipped vocabularies retain packaged fromBytes round tr
   for (const name of ["o200k", "qwen3-6", "mistral-tekken", "deepseek-v4", "kimi-k3", "gpt2"]) {
     await assertPackagedRoundTrip(name);
   }
+});
+
+test("the p50k package exposes round-tripping base and edit vocabularies", async () => {
+  await assertPackagedRoundTrip("p50k");
+  await assertPackagedRoundTrip("p50k", "p50k-edit.htk");
+});
+
+test("the Gemma 4 package round-trips through the public SentencePiece runtime", async () => {
+  await assertPackagedRoundTrip("gemma4");
+});
+
+test("the GLM-5.2 package round-trips through the public byte-BPE runtime", async () => {
+  await assertPackagedRoundTrip("glm5-2");
+});
+
+test("the MiniMax M3 package round-trips through the public byte-BPE runtime", async () => {
+  await assertPackagedRoundTrip("minimax-m3");
+});
+
+test("the Nemotron 3 package round-trips through the public byte-BPE runtime", async () => {
+  await assertPackagedRoundTrip("nemotron3");
+});
+
+test("the Command A+ package round-trips through the public byte-BPE runtime", async () => {
+  await assertPackagedRoundTrip("command-a-plus");
 });
