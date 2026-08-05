@@ -519,12 +519,23 @@ function createDecodeMemo(decoder, options = {}) {
   let tracking = false;
   const probes = new Array(PROBE_ENTRIES);
   let probeCount = 0;
+  const observedContainers = /* @__PURE__ */ new WeakSet();
+  let observedContainerCount = 0;
+  let capacityBypassed = false;
   function removeRecord(record) {
     const key = record.key.deref();
     if (key !== void 0 && records.get(key) === record) records.delete(key);
     snapshotBytes -= record.snapshot.byteLength;
     outputCodeUnits -= record.output.length;
     entries -= 1;
+  }
+  function bypassCapacity() {
+    for (const record of slots) {
+      if (record !== void 0) removeRecord(record);
+    }
+    slots.fill(void 0);
+    nextSlot = 0;
+    capacityBypassed = true;
   }
   function store(input, value) {
     if (typeof value !== "string" || value.length > maxOutputCodeUnits) {
@@ -585,6 +596,10 @@ function createDecodeMemo(decoder, options = {}) {
       const output2 = decoder.decode(input);
       if (repeatedProbe) {
         tracking = store(input, output2);
+        if (tracking) {
+          observedContainers.add(input);
+          observedContainerCount = 1;
+        }
         probes.fill(void 0);
         probeCount = 0;
       } else if (probeCount < PROBE_ENTRIES && memoContainer(input) && typeof output2 === "string" && output2.length <= maxOutputCodeUnits && input.length > 0 && input.length <= maxIds) {
@@ -593,7 +608,20 @@ function createDecodeMemo(decoder, options = {}) {
       }
       return output2;
     }
+    if (capacityBypassed) {
+      misses += 1;
+      return decoder.decode(input);
+    }
     const eligible = memoContainer(input);
+    if (eligible && !observedContainers.has(input)) {
+      observedContainers.add(input);
+      observedContainerCount += 1;
+      if (observedContainerCount > maxEntries) {
+        bypassCapacity();
+        misses += 1;
+        return decoder.decode(input);
+      }
+    }
     const record = eligible ? records.get(input) : void 0;
     if (record !== void 0 && record !== PENDING && record !== UNCACHEABLE) {
       if (sameContents(input, record.snapshot)) {
@@ -619,6 +647,8 @@ function createDecodeMemo(decoder, options = {}) {
       maxIds,
       maxOutputCodeUnits,
       tracking,
+      capacityBypassed,
+      observedContainers: observedContainerCount,
       probeEntries: probeCount,
       entries,
       snapshotBytes,
@@ -1699,6 +1729,7 @@ var RpcWorker = class {
     this.worker = worker;
     this.nextId = 0;
     this.pending = /* @__PURE__ */ new Map();
+    this.failure = void 0;
     worker.addEventListener("message", ({ data }) => {
       const pending = this.pending.get(data.id);
       if (pending === void 0) return;
@@ -1711,11 +1742,13 @@ var RpcWorker = class {
       const error = new Error(
         [event.message, location].filter((part) => part).join(" at ") || "execution worker failed"
       );
+      this.failure = error;
       for (const pending of this.pending.values()) pending.reject(error);
       this.pending.clear();
     });
   }
   call(operation, value = {}, transfer = []) {
+    if (this.failure !== void 0) return Promise.reject(this.failure);
     return new Promise((resolve, reject) => {
       const id = this.nextId++;
       this.pending.set(id, { resolve, reject });
@@ -1724,6 +1757,9 @@ var RpcWorker = class {
   }
   close() {
     this.worker.terminate();
+    const error = new Error("execution worker closed");
+    this.failure ??= error;
+    for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
   }
 };
@@ -2113,6 +2149,7 @@ async function createTierRuntime(options) {
       });
       return result.ids;
     } catch (error) {
+      if (closed) throw error;
       const ids = single.encode(bytes);
       lastTelemetry = Object.freeze({ tier, fallback: true, cause: error.message });
       return ids;
