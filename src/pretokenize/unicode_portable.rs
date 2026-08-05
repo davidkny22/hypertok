@@ -212,3 +212,71 @@ pub(crate) fn kimi_class_of(cp: u32) -> KimiCharClass {
 pub(crate) fn is_deepseek_cjk(cp: u32) -> bool {
     (0x4E00..=0x9FA5).contains(&cp) || (0x3040..=0x30FF).contains(&cp)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn canonical_whitespace(cp: u32) -> bool {
+        matches!(
+            cp,
+            0x0009..=0x000d
+                | 0x0020
+                | 0x0085
+                | 0x00a0
+                | 0x1680
+                | 0x2000..=0x200a
+                | 0x2028..=0x2029
+                | 0x202f
+                | 0x205f
+                | 0x3000
+        )
+    }
+
+    #[test]
+    fn every_classifier_uses_unicode_white_space() {
+        for cp in 0..=char::MAX as u32 {
+            let Some(value) = char::from_u32(cp) else {
+                continue;
+            };
+            let expected = canonical_whitespace(cp);
+            assert_eq!(
+                value.is_whitespace(),
+                expected,
+                "Rust White_Space U+{cp:04X}"
+            );
+            assert_eq!(
+                class_of(cp) == CharClass::Whitespace,
+                expected,
+                "base U+{cp:04X}"
+            );
+            assert_eq!(
+                ds_class_of(cp) == DsCharClass::Whitespace,
+                expected,
+                "deepseek U+{cp:04X}"
+            );
+            assert_eq!(
+                o200k_class_of(cp) == O200kCharClass::Whitespace,
+                expected,
+                "o200k U+{cp:04X}"
+            );
+            assert_eq!(
+                kimi_class_of(cp).base() == O200kCharClass::Whitespace,
+                expected,
+                "kimi U+{cp:04X}"
+            );
+        }
+    }
+
+    #[test]
+    fn whitespace_edge_points_are_canonical() {
+        for cp in [0x200b, 0x2060, 0xfeff] {
+            assert!(!canonical_whitespace(cp), "U+{cp:04X}");
+            assert_ne!(class_of(cp), CharClass::Whitespace, "U+{cp:04X}");
+        }
+        for cp in [0x0085, 0x00a0, 0x2028, 0x202f] {
+            assert!(canonical_whitespace(cp), "U+{cp:04X}");
+            assert_eq!(class_of(cp), CharClass::Whitespace, "U+{cp:04X}");
+        }
+    }
+}

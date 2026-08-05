@@ -1,5 +1,6 @@
 import hashlib
 import base64
+import gzip
 import json
 import struct
 import sys
@@ -19,7 +20,14 @@ encoding = tiktoken.get_encoding("o200k_base")
 rows = []
 for workload in request["workloads"]:
     if "path" in workload:
-        with open(workload["path"], "rb") as source:
+        compression = workload.get("compression")
+        if compression == "gzip":
+            source = gzip.open(workload["path"], "rb")
+        elif compression is None:
+            source = open(workload["path"], "rb")
+        else:
+            raise ValueError(f"unsupported workload compression: {compression}")
+        with source:
             text = source.read().decode("utf-8")
     else:
         text = base64.b64decode(workload["bytes_base64"]).decode("utf-8")

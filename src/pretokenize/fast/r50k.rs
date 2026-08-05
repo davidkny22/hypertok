@@ -694,6 +694,96 @@ mod tests {
         }
     }
 
+    fn owned_pieces<'a>(source: impl Iterator<Item = Pretoken<'a>>) -> Vec<Vec<u8>> {
+        source.map(|piece| piece.0.to_vec()).collect()
+    }
+
+    fn batched_pieces(input: &[u8]) -> Vec<Vec<u8>> {
+        use crate::pretokenize::{PRETOKEN_CHUNK, PretokenSpans, SpanBatch};
+
+        let mut source = FastR50kPretokenizer::new(input);
+        let mut batch = SpanBatch::new();
+        let mut pieces = Vec::new();
+        loop {
+            let count = source.fill_spans_keyed(&mut batch, &|_| {});
+            for index in 0..count {
+                // SAFETY: `index` is below the initialized count returned by the fill.
+                pieces.push(unsafe { batch.span(index) }.to_vec());
+            }
+            if count < PRETOKEN_CHUNK {
+                break;
+            }
+        }
+        pieces
+    }
+
+    fn assert_canonical_feff_site(pieces: &[Vec<u8>], route: &str, padding: usize) {
+        let marker = [
+            b".".as_slice(),
+            b"\n".as_slice(),
+            b"\n".as_slice(),
+            "\u{feff}\u{feff}".as_bytes(),
+            b"Also".as_slice(),
+        ];
+        assert!(
+            pieces.windows(marker.len()).any(|window| {
+                window
+                    .iter()
+                    .zip(marker)
+                    .all(|(piece, expected)| piece.as_slice() == expected)
+            }),
+            "{route} merged the newline pair before U+FEFF at padding {padding}: {:?}",
+            pieces
+                .iter()
+                .map(|piece| String::from_utf8_lossy(piece))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn feff_boundary_matches_across_scanner_and_chunk_routes() {
+        use crate::pretokenize::{PretokenizerType, safe_split_ranges};
+
+        for padding in [0, 50, 200, 2_000, 100_000] {
+            let mut input = vec![b'x'; padding];
+            input.extend_from_slice(".\n\n\u{feff}\u{feff}Also on HuffPost:\n\n".as_bytes());
+            input.extend(std::iter::repeat_n(b'y', padding));
+
+            let scalar = owned_pieces(ScalarIter::new(&input));
+            assert_canonical_feff_site(&scalar, "scalar", padding);
+
+            let iterator = owned_pieces(FastR50kPretokenizer::new(&input));
+            assert_eq!(iterator, scalar, "iterator at padding {padding}");
+            assert_canonical_feff_site(&iterator, "iterator", padding);
+
+            let dispatch = owned_pieces(PretokenizerType::GPT2.pretokenize(&input));
+            assert_eq!(dispatch, scalar, "dispatch at padding {padding}");
+
+            let batched = batched_pieces(&input);
+            assert_eq!(batched, scalar, "two-phase batch at padding {padding}");
+
+            let ranges = safe_split_ranges(&input, 64, &[]);
+            let split: Vec<Vec<u8>> = ranges
+                .iter()
+                .flat_map(|range| owned_pieces(FastR50kPretokenizer::new(&input[range.clone()])))
+                .collect();
+            assert_eq!(split, scalar, "chunk prescan at padding {padding}");
+
+            #[cfg(feature = "opt-level-select")]
+            {
+                let forced_scalar = super::super::level_select::with_scalar_scanner(true, || {
+                    owned_pieces(FastR50kPretokenizer::new(&input))
+                });
+                assert_eq!(forced_scalar, scalar, "forced scalar at padding {padding}");
+
+                let selected = super::super::level_select::with_scalar_scanner(false, || {
+                    owned_pieces(FastR50kPretokenizer::new(&input))
+                });
+                assert_eq!(selected, scalar, "selected scanner at padding {padding}");
+            }
+        }
+    }
+
     /// Test-local wrapper over the shared batch walker, kept because
     /// `cargo test` builds skip fat LTO: shipped symbols are not inlined
     /// into test loops and measure ~1.4x slow, so the interleaved perf

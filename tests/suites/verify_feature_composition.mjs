@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { gunzipSync } from "node:zlib";
 import { loadExecutionArtifactManifest, shippingFeatures } from "./artifact_manifest.mjs";
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -101,7 +102,8 @@ let workloadBytes = 0;
 let workloadIds = 0;
 let mutationReference;
 for (const workload of corpusManifest.workloads) {
-  const source = readFileSync(path.join(repository, "benches", "corpus", workload.path));
+  const stored = readFileSync(path.join(repository, "benches", "corpus", workload.path));
+  const source = workload.compression === "gzip" ? gunzipSync(stored) : stored;
   const input = repeatTo(source, 16_384);
   const baseFirst = base.encode(input);
   const candidateFirst = candidate.encode(input);
@@ -217,7 +219,9 @@ const mixedInputs = [
 const parityInputs = [
   ...corpusManifest.workloads.map((workload) => [
     workload.id,
-    readFileSync(path.join(repository, "benches", "corpus", workload.path)),
+    workload.compression === "gzip"
+      ? gunzipSync(readFileSync(path.join(repository, "benches", "corpus", workload.path)))
+      : readFileSync(path.join(repository, "benches", "corpus", workload.path)),
   ]),
   ...mixedInputs.map(([id, text]) => [id, encoder.encode(text)]),
 ];

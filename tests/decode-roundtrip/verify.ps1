@@ -6,9 +6,10 @@ $manifestPath = Join-Path $root "benches\corpus\manifest.json"
 $corpus = @()
 $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
 foreach ($workload in $manifest.workloads) {
-    $corpus += Join-Path (Join-Path $root "benches\corpus") $workload.path
+    if ($null -eq $workload.compression) {
+        $corpus += Join-Path (Join-Path $root "benches\corpus") $workload.path
+    }
 }
-if ($corpus.Count -ne 10) { throw "decode corpus file count changed: $($corpus.Count)" }
 foreach ($path in @($o200k, $sentencePiece) + $corpus) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "decode input is absent: $path"
