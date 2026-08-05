@@ -2,11 +2,18 @@
 
 All notable public changes are recorded here.
 
-## 0.2.1
+## 0.2.2
 
 - Added the additive HTK format-v1 cl100k named-pattern identifier and runtime routing.
 - Added exact conversion of the Llama-class byte-BPE `Sequence` postprocessor.
 - Added independently verified cl100k_base and Meta Llama 3 vocabulary packages.
+- Fixed worker lifecycle failures leaving pending calls unsettled, and decode memo
+  capacity thrash on very large repeated containers.
+- Added exhaustive whitespace-classifier and route-equivalence gates: every scanner
+  path is verified against the canonical Unicode White_Space set across all
+  1,112,064 scalar values.
+- Adopted OpenAI's tiktoken implementation as the benchmark oracle for
+  tiktoken-format vocabularies.
 
 ## 0.1.0
 
