@@ -111,13 +111,16 @@ async function measureBrowser() {
     const rows = [];
     for (const workload of workloads) {
       const result = await page.evaluate(
-        async ({ corpusUrl, expectedBytes, targetBytes, sampleCount, warmupCount }) => {
+        async ({ corpusUrl, fullBytes, sampleBytes, targetBytes, sampleCount, warmupCount }) => {
           const response = await fetch(corpusUrl, { cache: "no-store" });
           if (!response.ok) throw new Error(`${corpusUrl}: HTTP ${response.status}`);
           const bytes = new Uint8Array(await response.arrayBuffer());
-          if (bytes.length !== expectedBytes) throw new Error("Workload byte count mismatch");
-          const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-          const iterations = Math.max(1, Math.ceil(targetBytes / bytes.length));
+          if (bytes.length !== fullBytes) throw new Error("Workload byte count mismatch");
+          const measuredBytes = sampleBytes < fullBytes ? bytes.subarray(0, sampleBytes) : bytes;
+          const text = new TextDecoder("utf-8", { fatal: sampleBytes === fullBytes }).decode(
+            measuredBytes,
+          );
+          const iterations = Math.max(1, Math.ceil(targetBytes / measuredBytes.length));
           let ids = new Uint32Array();
           for (let sample = 0; sample < warmupCount; sample += 1) {
             for (let iteration = 0; iteration < iterations; iteration += 1) {
@@ -134,7 +137,7 @@ async function measureBrowser() {
             if (!Number.isFinite(elapsed) || elapsed <= 0) {
               throw new Error(`Invalid encode duration: ${elapsed}`);
             }
-            samples.push((bytes.length * iterations) / (elapsed * 1_000));
+            samples.push((measuredBytes.length * iterations) / (elapsed * 1_000));
           }
           const idBytes = new Uint8Array(ids.buffer, ids.byteOffset, ids.byteLength);
           const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", idBytes));
@@ -142,14 +145,15 @@ async function measureBrowser() {
           return {
             samples,
             iterationsPerSample: iterations,
-            bytesPerSample: bytes.length * iterations,
+            bytesPerSample: measuredBytes.length * iterations,
             tokenCount: ids.length,
             idDigest,
           };
         },
         {
           corpusUrl: `${server.origin}/corpus/${workload.path}`,
-          expectedBytes: workload.bytes,
+          fullBytes: workload.fullBytes,
+          sampleBytes: workload.bytes,
           targetBytes: targetBytesPerSample,
           sampleCount: n,
           warmupCount: warmup,

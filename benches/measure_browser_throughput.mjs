@@ -72,12 +72,15 @@ async function measurePage(page, workload, n, warmup) {
     configuration.targetBytesPerSample,
   );
   const result = await page.evaluate(
-    async ({ corpusUrl, expectedBytes, iterationsPerSample, n, warmup }) => {
+    async ({ corpusUrl, fullBytes, sampleBytes, iterationsPerSample, n, warmup }) => {
       const response = await fetch(corpusUrl, { cache: "no-store" });
       if (!response.ok) throw new Error(`${corpusUrl}: HTTP ${response.status}`);
       const bytes = new Uint8Array(await response.arrayBuffer());
-      if (bytes.length !== expectedBytes) throw new Error("Workload byte count mismatch");
-      const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      if (bytes.length !== fullBytes) throw new Error("Workload byte count mismatch");
+      const measuredBytes = sampleBytes < fullBytes ? bytes.subarray(0, sampleBytes) : bytes;
+      const text = new TextDecoder("utf-8", { fatal: sampleBytes === fullBytes }).decode(
+        measuredBytes,
+      );
       let ids = new Uint32Array();
       for (let sample = 0; sample < warmup; sample += 1) {
         for (let iteration = 0; iteration < iterationsPerSample; iteration += 1) {
@@ -94,13 +97,14 @@ async function measurePage(page, workload, n, warmup) {
         if (!Number.isFinite(elapsed) || elapsed <= 0) {
           throw new Error(`Invalid encode duration: ${elapsed}`);
         }
-        samples.push((bytes.length * iterationsPerSample) / (elapsed * 1_000));
+        samples.push((measuredBytes.length * iterationsPerSample) / (elapsed * 1_000));
       }
       return { samples, tokenCount: ids.length };
     },
     {
       corpusUrl: `${server.origin}/corpus/${workload.path}`,
-      expectedBytes: workload.bytes,
+      fullBytes: workload.fullBytes,
+      sampleBytes: workload.bytes,
       iterationsPerSample: iterations,
       n,
       warmup,

@@ -209,7 +209,29 @@ async function loadWorkloads() {
     const bytes = await fetchBytes(`/corpus/${entry.path}`);
     if (bytes.length !== entry.bytes) throw new Error(`${entry.id}: byte count mismatch`);
     if ((await sha256Hex(bytes)) !== entry.sha256) throw new Error(`${entry.id}: digest mismatch`);
-    workloads.push({ ...entry, text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) });
+    const smokeSampleBytes = Number(globalThis.__HYPERTOK_OWT_SAMPLE_BYTES ?? 0);
+    if (
+      smokeSampleBytes > 0 &&
+      entry.id === "openwebtext-slice" &&
+      bytes.length > smokeSampleBytes
+    ) {
+      const sampledText = new TextDecoder("utf-8", { fatal: false }).decode(
+        bytes.subarray(0, smokeSampleBytes),
+      );
+      const sampledBytes = new TextEncoder().encode(sampledText).length;
+      workloads.push({
+        ...entry,
+        fullBytes: entry.bytes,
+        text: sampledText,
+        bytes: sampledBytes,
+      });
+    } else {
+      workloads.push({
+        ...entry,
+        fullBytes: entry.bytes,
+        text: new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+      });
+    }
   }
   return workloads;
 }

@@ -75,15 +75,18 @@ let escalationPlan;
 
 async function measurePage(page, workload, reference, containerRegime, n, warmup) {
   return page.evaluate(
-    async ({ corpusUrl, expectedBytes, n, warmup, targetBytesPerSample, ordinary, segmentBytes, containerRegime }) => {
+    async ({ corpusUrl, fullBytes, sampleBytes, n, warmup, targetBytesPerSample, ordinary, segmentBytes, containerRegime }) => {
       if (containerRegime !== "repeated" && containerRegime !== "fresh") {
         throw new Error("Unknown decode container regime");
       }
       const response = await fetch(corpusUrl, { cache: "no-store" });
       if (!response.ok) throw new Error(`${corpusUrl}: HTTP ${response.status}`);
       const bytes = new Uint8Array(await response.arrayBuffer());
-      if (bytes.length !== expectedBytes) throw new Error("Workload byte count mismatch");
-      const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      if (bytes.length !== fullBytes) throw new Error("Workload byte count mismatch");
+      const measuredBytes = sampleBytes < fullBytes ? bytes.subarray(0, sampleBytes) : bytes;
+      const text = new TextDecoder("utf-8", { fatal: sampleBytes === fullBytes }).decode(
+        measuredBytes,
+      );
       const segmentTexts = [];
       let current = "";
       let currentBytes = 0;
@@ -110,7 +113,7 @@ async function measurePage(page, workload, reference, containerRegime, n, warmup
       const tokenCount = segments.reduce((sum, ids) => sum + ids.length, 0);
       const repetitions = Math.max(
         1,
-        Math.min(512, Math.ceil(targetBytesPerSample / bytes.length)),
+        Math.min(512, Math.ceil(targetBytesPerSample / measuredBytes.length)),
       );
       const freshSampleInputs = () => Array.from(
         { length: repetitions },
@@ -136,7 +139,7 @@ async function measurePage(page, workload, reference, containerRegime, n, warmup
         if (!Number.isFinite(elapsed) || elapsed <= 0) {
           throw new Error(`Invalid decode duration: ${elapsed}`);
         }
-        samples.push((bytes.length * repetitions) / (elapsed * 1_000));
+        samples.push((measuredBytes.length * repetitions) / (elapsed * 1_000));
       }
       if (typeof decoded !== "string" || decoded.length === 0) {
         throw new Error("Timed decode produced no text");
@@ -145,13 +148,14 @@ async function measurePage(page, workload, reference, containerRegime, n, warmup
         samples,
         tokenCount,
         iterationsPerSample: segments.length * repetitions,
-        bytesPerSample: bytes.length * repetitions,
+        bytesPerSample: measuredBytes.length * repetitions,
         exact: true,
       };
     },
     {
       corpusUrl: `${server.origin}/corpus/${workload.path}`,
-      expectedBytes: workload.bytes,
+      fullBytes: workload.fullBytes,
+      sampleBytes: workload.bytes,
       n,
       warmup,
       targetBytesPerSample: configuration.targetBytesPerSample,

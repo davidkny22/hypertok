@@ -87,7 +87,26 @@ export function loadCorpus({ roles = ["arena", "arena-large"] } = {}) {
       }
 
       const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-      return Object.freeze({ ...entry, text });
+      const smokeSampleBytes = Number(
+        process.env.HYPERTOK_BENCH_OPENWEBTEXT_SAMPLE_BYTES ?? 0,
+      );
+      if (
+        smokeSampleBytes > 0 &&
+        entry.id === "openwebtext-slice" &&
+        bytes.length > smokeSampleBytes
+      ) {
+        const sampledText = new TextDecoder("utf-8", { fatal: false }).decode(
+          bytes.subarray(0, smokeSampleBytes),
+        );
+        const sampledBytes = new TextEncoder().encode(sampledText).length;
+        return Object.freeze({
+          ...entry,
+          fullBytes: entry.bytes,
+          text: sampledText,
+          bytes: sampledBytes,
+        });
+      }
+      return Object.freeze({ ...entry, fullBytes: entry.bytes, text });
     });
 }
 

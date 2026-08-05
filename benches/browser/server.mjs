@@ -107,6 +107,9 @@ const page = Buffer.from(`<!doctype html>
 <meta charset="utf-8">
 <title>hypertok harness</title>
 <script type="module">
+  globalThis.__HYPERTOK_OWT_SAMPLE_BYTES = ${Number(
+    process.env.HYPERTOK_BENCH_OPENWEBTEXT_SAMPLE_BYTES ?? 0,
+  )};
   globalThis.harnessReady = import("/bundle.mjs").then((module) => {
     globalThis.harness = module;
     return true;

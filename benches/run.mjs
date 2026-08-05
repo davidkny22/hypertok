@@ -120,6 +120,7 @@ if (plan.command === "benchmark") {
     environment.HYPERTOK_BENCH_N = "1";
     environment.HYPERTOK_BENCH_MAX_N = "1";
     environment.HYPERTOK_BENCH_OPENWEBTEXT_N = "1";
+    environment.HYPERTOK_BENCH_OPENWEBTEXT_SAMPLE_BYTES = "1048576";
     environment.HYPERTOK_BENCH_WARMUP = "0";
     environment.HYPERTOK_BENCH_TARGET_BYTES = "1024";
     environment.HYPERTOK_LOAD_N = "1";

@@ -15,8 +15,17 @@ assert.deepEqual(
 );
 assert.equal(new Set(workloads.map(({ path }) => path)).size, workloads.length);
 assert.ok(workloads.every(({ bytes }) => Number.isSafeInteger(bytes) && bytes > 0));
+assert.ok(
+  workloads.every(
+    ({ bytes, fullBytes }) =>
+      Number.isSafeInteger(fullBytes) && fullBytes >= bytes,
+  ),
+);
 assert.ok(workloads.every(({ sha256 }) => /^[0-9a-f]{64}$/.test(sha256)));
 assert.equal(workloads.find(({ id }) => id === "standard-text").source.standard, "Canterbury Corpus");
+const openWebText = workloads.find(({ id }) => id === "openwebtext-slice");
+assert.equal(openWebText.fullBytes, 50_000_000);
+assert.equal(new TextEncoder().encode(openWebText.text).length, openWebText.bytes);
 
 const scriptWorkloads = loadScriptCorpus();
 assert.deepEqual(scriptWorkloads.map(({ id }) => id), scriptWorkloadIds);
