@@ -3,7 +3,7 @@ const records = [
     id: "gpt2",
     name: "GPT-2 ByteLevel BPE",
     browserAsset: "gpt2.htk",
-    oracleReference: "@huggingface/tokenizers",
+    oracleReference: "@dqbd/tiktoken",
     htkSha256: "17e4cc7df1f4d95b80c43df52ecc31f9e5931a319e9964cffbf9dc4ed88c9da2",
     source: Object.freeze({
       package: "@lenml/tokenizer-gpt2",
