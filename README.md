@@ -77,6 +77,9 @@ tokenizer.tokenBytes(id);
 tokenizer.free();
 ```
 
+`reserved` controls how reserved tokens in the input are handled: matched, refused, or encoded
+literally, per call.
+
 The handle also exposes:
 
 - `vocabSize`
@@ -86,8 +89,7 @@ The handle also exposes:
 - `prefixMarker` and `suffixMarker`
 
 `encodeDetailed` returns IDs, original-input UTF-8 byte offsets in `starts`, and the reserved token
-names found in the input. Reserved tokens can be matched, refused, or encoded literally per call.
-`encodeSync` is available on the single tier and throws on tiers that cannot execute synchronously.
+names found in the input. `encodeSync` is available on the single tier and throws on tiers that cannot execute synchronously.
 
 ## Execution tiers
 
@@ -151,8 +153,9 @@ structural classes, bidirectional vocabulary mapping, refusal paths, reserved-to
 normalization offsets, chunk overlap, SIMD equivalence, all execution tiers, shims, and planted
 mutations.
 
-Decode uses the same arena, and follows the same rules. Repeated containers hit the decode
-cache; fresh streams do not. Both are reported, separately:
+Decode uses the same arena, and follows the same rules. A repeated container carries token ids
+the tokenizer has decoded before, so the decode cache engages. A fresh stream arrives for the
+first time and pays the full path. Both are reported, separately:
 
 | Workload | repeated, MB/s | fresh, MB/s | Fastest incumbent (fresh), MB/s | fresh speedup |
 |---|---:|---:|---|---:|
@@ -176,13 +179,13 @@ resident memory separately. Every row records its workload, tier, SIMD level, cl
 sample count, median, p95, variance, ratio, and commit. `@huggingface/tokenizers`, `kitoken`,
 `gpt-tokenizer`, `js-tiktoken`, `@dqbd/tiktoken`, `@goliapkg/tiktoken-wasm`, `tiktoken-wasm`,
 and `@lenml/tokenizers` are all registered in the arena. tiktoken-wasm could not be installed
-for the booked run (npm E404) and is recorded as unavailable.
+for the published run (npm E404) and is recorded as unavailable.
 
 The full results, including decode, load, and resident memory, can be found here:
 [BENCHMARKS.md](BENCHMARKS.md).
 
 <!-- container-arena:start -->
-The booked run covers 546 measured rows at commit b0c4bd0, across two vocabularies, in Node
+The published run covers 546 measured rows at commit b0c4bd0, across two vocabularies, in Node
 and isolated Chrome. hypertok wins every measured encode comparison. On decode, it wins 239 of
 256, and all 17 losses sit in the fresh-container regime, listed row by row in BENCHMARKS.md.
 <!-- container-arena:end -->
@@ -194,7 +197,7 @@ and isolated Chrome. hypertok wins every measured encode comparison. On decode, 
 We cannot claim hypertok is pareto optimal yet. The engine keeps its tables resident.
 For GPT-2, gpt-tokenizer holds only 3.1 MB, where hypertok holds 20.2 MB. (That said,
 over the wire it's only about 0.27 MB gzipped with the GPT-2 vocabulary included,
-sitting beside the leanest pure-JS bundles.) First construction takes about 114 ms.
+sitting beside the leanest pure-JS bundles.) Constructing the tokenizer from its vocabulary bytes takes about 114 ms the first time.
 If you tokenize one short prompt per page load and never again, a small pure-JS
 library serves you fine. hypertok is built for the paths where tokenization is
 traffic: gateways, RAG chunking, editors, anything counting tokens all day. But we
