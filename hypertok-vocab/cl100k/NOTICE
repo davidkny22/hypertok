@@ -1,0 +1,9 @@
+OpenAI cl100k_base vocabulary
+
+Source: https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken
+Source revision: openai/tiktoken@08a5f3b2c987ada4fc5aa1f16c643c203fa8acaa
+Source SHA-256: 223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7
+HTK file SHA-256: 5fbde1cb8074b6198ea469711a33e68af2767bdf643bb694f0edf604a2831703
+
+The source is distributed under the MIT License included in this package.
+This package is not affiliated with or endorsed by OpenAI.
