@@ -5,6 +5,7 @@ import http from "node:http";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { gunzipSync } from "node:zlib";
 import { chromium } from "../../benches/node_modules/playwright-core/index.mjs";
 import { loadExecutionArtifactManifest } from "../../tests/suites/artifact_manifest.mjs";
 import { selectTier } from "../src/tier-runtime.mjs";
@@ -39,9 +40,10 @@ const baseManifest = JSON.parse(
   fs.readFileSync(path.join(repository, "benches", "corpus", "manifest.json"), "utf8"),
 );
 const workloads = [
-  ...baseManifest.workloads.map((entry) => ({
+  ...baseManifest.workloads.filter((entry) => entry.role !== "arena-large").map((entry) => ({
     id: entry.id,
     path: path.join(repository, "benches", "corpus", entry.path),
+    compression: entry.compression,
   })),
   { id: "boundary-empty", text: "" },
   { id: "boundary-one-pretoken", text: "alpha" },
@@ -298,6 +300,11 @@ const server = http.createServer((request, response) => {
   } else if (url.pathname.startsWith("/workload/")) {
     const workload = workloadById.get(decodeURIComponent(url.pathname.slice("/workload/".length)));
     if (workload?.path !== undefined) {
+      if (workload.compression === "gzip") {
+        response.writeHead(200, headers("text/plain; charset=utf-8"));
+        response.end(gunzipSync(fs.readFileSync(workload.path)));
+        return;
+      }
       filePath = workload.path;
     } else if (workload?.text !== undefined) {
       response.writeHead(200, headers("text/plain; charset=utf-8"));

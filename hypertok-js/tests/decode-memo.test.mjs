@@ -181,7 +181,7 @@ test("keeps accessor, sparse, subclassed, shared, and oversized containers off t
   assert.ok(memo.stats().uncacheable >= 1);
 });
 
-test("evicts within its fixed entry bound", () => {
+test("bypasses memo state when the repeated container set exceeds its bound", () => {
   const source = fixture();
   const memo = createDecodeMemo(source.decoder, { maxEntries: 2 });
   const first = [0];
@@ -189,14 +189,15 @@ test("evicts within its fixed entry bound", () => {
   const third = [2];
   assert.equal(memo.decode(first), "a");
   assert.equal(memo.decode(first), "a");
-  assert.equal(memo.decode(second), "b");
-  assert.equal(memo.decode(second), "b");
-  assert.equal(memo.decode(third), "c");
-  assert.equal(memo.decode(third), "c");
-  assert.equal(memo.stats().entries, 2);
-  assert.equal(memo.stats().evictions, 1);
   assert.equal(memo.decode(first), "a");
-  assert.equal(source.calls(), 7);
+  assert.equal(memo.decode(second), "b");
+  assert.equal(memo.decode(third), "c");
+  assert.equal(memo.stats().capacityBypassed, true);
+  assert.equal(memo.stats().observedContainers, 3);
+  assert.equal(memo.stats().entries, 0);
+  assert.equal(memo.stats().hits, 1);
+  assert.equal(memo.decode(first), "a");
+  assert.equal(source.calls(), 5);
 });
 
 test("validates decoder and limits", () => {

@@ -112,6 +112,9 @@ export function createDecodeMemo(decoder, options = {}) {
   let tracking = false;
   const probes = new Array(PROBE_ENTRIES);
   let probeCount = 0;
+  const observedContainers = new WeakSet();
+  let observedContainerCount = 0;
+  let capacityBypassed = false;
 
   function removeRecord(record) {
     const key = record.key.deref();
@@ -119,6 +122,15 @@ export function createDecodeMemo(decoder, options = {}) {
     snapshotBytes -= record.snapshot.byteLength;
     outputCodeUnits -= record.output.length;
     entries -= 1;
+  }
+
+  function bypassCapacity() {
+    for (const record of slots) {
+      if (record !== undefined) removeRecord(record);
+    }
+    slots.fill(undefined);
+    nextSlot = 0;
+    capacityBypassed = true;
   }
 
   function store(input, value) {
@@ -187,6 +199,10 @@ export function createDecodeMemo(decoder, options = {}) {
       const output = decoder.decode(input);
       if (repeatedProbe) {
         tracking = store(input, output);
+        if (tracking) {
+          observedContainers.add(input);
+          observedContainerCount = 1;
+        }
         probes.fill(undefined);
         probeCount = 0;
       } else if (
@@ -202,7 +218,20 @@ export function createDecodeMemo(decoder, options = {}) {
       }
       return output;
     }
+    if (capacityBypassed) {
+      misses += 1;
+      return decoder.decode(input);
+    }
     const eligible = memoContainer(input);
+    if (eligible && !observedContainers.has(input)) {
+      observedContainers.add(input);
+      observedContainerCount += 1;
+      if (observedContainerCount > maxEntries) {
+        bypassCapacity();
+        misses += 1;
+        return decoder.decode(input);
+      }
+    }
     const record = eligible ? records.get(input) : undefined;
     if (record !== undefined && record !== PENDING && record !== UNCACHEABLE) {
       if (sameContents(input, record.snapshot)) {
@@ -229,6 +258,8 @@ export function createDecodeMemo(decoder, options = {}) {
       maxIds,
       maxOutputCodeUnits,
       tracking,
+      capacityBypassed,
+      observedContainers: observedContainerCount,
       probeEntries: probeCount,
       entries,
       snapshotBytes,

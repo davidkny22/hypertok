@@ -244,3 +244,22 @@ test("public explicit memo verifies repeated container content", async () => {
     handle.free();
   }
 });
+
+test("public automatic memo bypasses a repeated container set above its capacity", async () => {
+  const { handle, runtime } = await loaded();
+  try {
+    const seed = handle.encodeSync("a");
+    assert.equal(handle.decode(seed), "a");
+    assert.equal(handle.decode(seed), "a");
+    assert.equal(handle.decode(seed), "a");
+    for (let index = 0; index < 512; index += 1) {
+      assert.equal(handle.decode(seed.slice()), "a");
+    }
+    const stats = runtime.decodeStats().memoState;
+    assert.equal(stats.capacityBypassed, true);
+    assert.equal(stats.observedContainers, 513);
+    assert.equal(stats.entries, 0);
+  } finally {
+    handle.free();
+  }
+});

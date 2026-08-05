@@ -132,6 +132,7 @@ class RpcWorker {
     this.worker = worker;
     this.nextId = 0;
     this.pending = new Map();
+    this.failure = undefined;
     worker.addEventListener("message", ({ data }) => {
       const pending = this.pending.get(data.id);
       if (pending === undefined) return;
@@ -146,12 +147,14 @@ class RpcWorker {
       const error = new Error(
         [event.message, location].filter((part) => part).join(" at ") || "execution worker failed",
       );
+      this.failure = error;
       for (const pending of this.pending.values()) pending.reject(error);
       this.pending.clear();
     });
   }
 
   call(operation, value = {}, transfer = []) {
+    if (this.failure !== undefined) return Promise.reject(this.failure);
     return new Promise((resolve, reject) => {
       const id = this.nextId++;
       this.pending.set(id, { resolve, reject });
@@ -161,6 +164,9 @@ class RpcWorker {
 
   close() {
     this.worker.terminate();
+    const error = new Error("execution worker closed");
+    this.failure ??= error;
+    for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
   }
 }
@@ -584,6 +590,7 @@ export async function createTierRuntime(options) {
       });
       return result.ids;
     } catch (error) {
+      if (closed) throw error;
       const ids = single.encode(bytes);
       lastTelemetry = Object.freeze({ tier, fallback: true, cause: error.message });
       return ids;
