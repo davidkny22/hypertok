@@ -2,6 +2,12 @@
 
 All notable public changes are recorded here.
 
+## 0.2.0
+
+- Added the additive HTK format-v1 cl100k named-pattern identifier and runtime routing.
+- Added exact conversion of the Llama-class byte-BPE `Sequence` postprocessor.
+- Added independently verified cl100k_base and Meta Llama 3 vocabulary packages.
+
 ## 0.1.0
 
 - Added the validated HTK vocabulary format and bidirectional converter.

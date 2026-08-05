@@ -111,12 +111,15 @@ The launch set is:
 - `@hypertok/vocab-deepseek-v4`
 - `@hypertok/vocab-kimi-k3`
 - `@hypertok/vocab-gpt2`
+- `@hypertok/vocab-cl100k`
+- `@hypertok/vocab-llama3`
 
 Each vocabulary serves a model family, not one checkpoint: o200k covers GPT-4o and the o-series,
 qwen3-6 covers the Qwen 3.5 and 3.6 lines, mistral-tekken covers Mistral's tekken-based models,
 deepseek-v4 covers the DeepSeek V4 line, and kimi-k3 covers the Kimi K3 family. gpt2 is
 the comparability standard for r50k-era models and research baselines, and every library in
-the demo races on it. A model absent
+the demo races on it. cl100k covers GPT-3.5 and GPT-4 era models and the ada-002 embedding
+line, and llama3 covers the Meta Llama 3 family. A model absent
 from this list likely shares a vocabulary with one that is here; the package metadata's source
 digest settles it.
 
@@ -221,8 +224,8 @@ their own licenses. Unicode data is Unicode 17.0.0.
 <summary>How this was built</summary>
 
 I'm a conceptual builder: I design, my agents work. The skills I built that govern the process,
-along with hypertok's decision ledger and spec as a worked example, will be released shortly. It
-explains what I do and how I work better than a paragraph can.
+along with hypertok's decision ledger and spec as a worked example, will be released shortly. The
+bundle explains what I do and how I work better than a paragraph can.
 
 </details>
 
