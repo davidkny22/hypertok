@@ -1,6 +1,6 @@
-# hypertok full benchmark, commit b0c4bd0
+# hypertok full benchmark, tag bench-2026-08-04
 
-**Result: PASS.** The `arena/full` command completed all 12 ordered commands on commit `b0c4bd0543d7d3ebb18194edce34d79521b09a1e`.
+**Result: PASS.** The `arena/full` command completed all 12 ordered commands on the code published at tag `bench-2026-08-04`, measured as commit `b0c4bd0543d7d3ebb18194edce34d79521b09a1e` in the development lineage.
 
 Generated from the run manifest on 2026-08-04 UTC. This report renders 756 of 756 performance records (546 measured, 210 unavailable) and preserves every comparison classification.
 
@@ -18,7 +18,8 @@ Generated from the run manifest on 2026-08-04 UTC. This report renders 756 of 75
 | Field | Value |
 | --- | --- |
 | Container hostname | ba8abf0d2661 |
-| Commit | b0c4bd0543d7d3ebb18194edce34d79521b09a1e |
+| Commit | b0c4bd0543d7d3ebb18194edce34d79521b09a1e (development lineage) |
+| Public tag | bench-2026-08-04 |
 | Public run key | 58a3fcccae1b8590f6585b073ea5b21687ca8eb786efa3d7e982759bf2267244 |
 | Session | container-b0c4bd0-full-3 |
 | Profile / mode | arena / full |
@@ -951,7 +952,8 @@ Displayed medians, p95 values, and ratios are rounded to three decimals; varianc
 These axes come from the booked browser ledger at commit `c6c1cb9`, measured in local
 cross-origin isolated Chrome 150 with gzip-as-served transfer and
 `measureUserAgentSpecificMemory` residency. The product paths these axes measure did not
-change between `c6c1cb9` and `b0c4bd0`.
+change between `c6c1cb9` and `b0c4bd0`. Both hashes identify states of the development
+lineage; the published code for this run is tag `bench-2026-08-04`.
 
 ### First-tokenize transfer, gzip as served
 

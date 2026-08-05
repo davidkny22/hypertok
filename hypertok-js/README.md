@@ -20,7 +20,7 @@ browser and in Node, measured on your machine, not ours.
 
 Isolated Chrome in a Linux container (EPYC 9V74), single thread, encode, GPT-2 vocabulary,
 n=5 to 11 per row and n=3 on the 50 MB corpus. Every incumbent runs at its documented fastest
-configuration, and token-id agreement is verified against the pinned Hugging Face reference
+configuration, and token-id agreement is verified against each vocabulary's pinned reference implementation
 before any ratio is accepted. Nothing is averaged into one headline score.
 
 At these rates the browser counts a hundred-kilobyte conversation in about a millisecond.
@@ -185,7 +185,7 @@ The full results, including decode, load, and resident memory, can be found here
 [BENCHMARKS.md](https://github.com/davidkny22/hypertok/blob/main/BENCHMARKS.md).
 
 <!-- container-arena:start -->
-The published run covers 546 measured rows at commit b0c4bd0, across two vocabularies, in Node
+The published run covers 546 measured rows at tag `bench-2026-08-04`, across two vocabularies, in Node
 and isolated Chrome. hypertok wins every measured encode comparison. On decode, it wins 239 of
 256, and all 17 losses sit in the fresh-container regime, listed row by row in BENCHMARKS.md.
 <!-- container-arena:end -->
@@ -215,8 +215,7 @@ believe, either way, that this represents a meaningful step in the right directi
 hypertok descends from [gigatoken](https://github.com/marcelroed/gigatoken) by Marcel Rød (MIT),
 whose engine we compiled, profiled, and then rebuilt for the web. The lineage includes gigatoken's
 own two-phase scanner, which had never been built for wasm before this project. We anchor
-correctness to exact agreement with the pinned Hugging Face reference implementation for every
-supported vocabulary.
+correctness to exact agreement with each vocabulary's pinned reference implementation.
 Vocabulary data comes from the model publishers named in each package's NOTICE. The demo bundles
 js-tiktoken, gpt-tokenizer, @dqbd/tiktoken, and @huggingface/tokenizers as live opponents, under
 their own licenses. Unicode data is Unicode 17.0.0.
