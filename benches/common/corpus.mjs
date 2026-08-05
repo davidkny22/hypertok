@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { gunzipSync } from "node:zlib";
 
 const corpusDirectory = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -17,6 +18,7 @@ const roleIds = Object.freeze({
     "long-document",
     "standard-text",
   ]),
+  "arena-large": Object.freeze(["openwebtext-slice"]),
   "script-stress": Object.freeze([
     "script-latin",
     "script-han",
@@ -25,7 +27,7 @@ const roleIds = Object.freeze({
   ]),
 });
 
-export function loadCorpus({ roles = ["arena"] } = {}) {
+export function loadCorpus({ roles = ["arena", "arena-large"] } = {}) {
   if (
     !Array.isArray(roles) ||
     roles.length === 0 ||
@@ -55,7 +57,27 @@ export function loadCorpus({ roles = ["arena"] } = {}) {
     .filter(({ role }) => selected.has(role))
     .map((entry) => {
       const filePath = path.join(corpusDirectory, entry.path);
-      const bytes = fs.readFileSync(filePath);
+      const storedBytes = fs.readFileSync(filePath);
+      let bytes = storedBytes;
+      if (entry.compression === "gzip") {
+        const compressedDigest = crypto
+          .createHash("sha256")
+          .update(storedBytes)
+          .digest("hex");
+        if (storedBytes.length !== entry.compressed_bytes) {
+          throw new Error(
+            `${entry.id} compressed byte count ${storedBytes.length} != ${entry.compressed_bytes}`,
+          );
+        }
+        if (compressedDigest !== entry.compressed_sha256) {
+          throw new Error(
+            `${entry.id} compressed sha256 ${compressedDigest} != ${entry.compressed_sha256}`,
+          );
+        }
+        bytes = gunzipSync(storedBytes);
+      } else if (entry.compression !== undefined) {
+        throw new Error(`${entry.id} unsupported compression ${entry.compression}`);
+      }
       const digest = crypto.createHash("sha256").update(bytes).digest("hex");
       if (bytes.length !== entry.bytes) {
         throw new Error(`${entry.id} byte count ${bytes.length} != ${entry.bytes}`);
@@ -73,6 +95,12 @@ export function loadScriptCorpus() {
   return loadCorpus({ roles: ["arena", "script-stress"] });
 }
 
-export const workloadIds = roleIds.arena;
+export const workloadIds = Object.freeze([
+  ...roleIds.arena,
+  ...roleIds["arena-large"],
+]);
 export const scriptStressIds = roleIds["script-stress"];
-export const scriptWorkloadIds = Object.freeze([...workloadIds, ...scriptStressIds]);
+export const scriptWorkloadIds = Object.freeze([
+  ...roleIds.arena,
+  ...scriptStressIds,
+]);

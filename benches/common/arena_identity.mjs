@@ -5,10 +5,12 @@ import { fileURLToPath } from "node:url";
 import { readContainerIdentity } from "./container_identity.mjs";
 import { buildRunIdentity, identityDigest } from "./identity.mjs";
 import {
+  benchmarkConfiguration,
   DECODE_CONTAINER_REGIMES,
   DECODE_FIELD_SEGMENT_BYTES,
   ORDINARY_ID_REFERENCES,
 } from "./throughput.mjs";
+import { VERDICT_SAMPLING_POLICY } from "./verdict_sampling.mjs";
 import { referenceRegistry } from "./reference_registry.mjs";
 import {
   prepareVocabularyArtifact,
@@ -87,6 +89,7 @@ export function browserArenaArtifacts(browserOutputDirectory, referenceSlugs) {
 
 export function buildArenaRunIdentity({ environment, commit, workloads, artifacts }) {
   const containerIdentity = readContainerIdentity(commit);
+  const configuration = benchmarkConfiguration();
   return buildRunIdentity({
     profile: "arena",
     environment,
@@ -97,9 +100,18 @@ export function buildArenaRunIdentity({ environment, commit, workloads, artifact
     artifactSha256: artifactIdentity(artifacts),
     referenceRegistrySha256: identityDigest(referenceRegistry),
     benchmarkConfigurationSha256: identityDigest({
+      mode: configuration.mode,
+      n: configuration.n,
+      maxN: configuration.maxN,
+      openWebTextN: configuration.openWebTextN,
+      warmup: configuration.warmup,
+      targetBytesPerSample: configuration.targetBytesPerSample,
+      carriedForwardAxes: configuration.carriedForwardAxes,
+      verdictSampling: VERDICT_SAMPLING_POLICY,
       decodeContainerRegimes: DECODE_CONTAINER_REGIMES,
       decodeFieldSegmentBytes: DECODE_FIELD_SEGMENT_BYTES,
       decodeFreshContainerPreparation: "outside-timed-interval",
+      decodeSampleRepetitions: "ceil(targetBytesPerSample/workloadBytes), capped at 512",
       decodeOrdinaryIdReferences: ORDINARY_ID_REFERENCES,
     }),
     ...(containerIdentity ?? {}),

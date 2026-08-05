@@ -43,15 +43,25 @@ characterization.
 npm run benchmark:smoke
 ```
 
-Run the complete arena at the registered sample counts:
+Run the canonical arena benchmark:
 
 ```powershell
 npm run benchmark
 ```
 
+The canonical benchmark starts each ordinary throughput row at five samples. It evaluates each
+agreeing reference ratio independently for that vocabulary, workload, environment, and decode
+regime. When the absolute log throughput gap is smaller than twice the root-sum-square relative
+standard deviation, hypertok and that unresolved reference extend to eleven samples. OpenWebText
+uses three samples and reports its minimum, maximum, relative range, and relative standard
+deviation instead of escalating. Every reported ratio carries the subject noise, reference noise,
+combined noise, gap, threshold, and resolution decision.
+
 Both benchmark commands validate the pinned model and corpus, exercise the timer and axis
-self-checks, then run agreement before encode, decode, load, and resident-memory measurements in
-Node and isolated Chrome.
+self-checks, then establish agreement before encode and both decode regimes in Node and isolated
+Chrome. Transfer, decompression, materialisation, and memory retain their booked rows while those
+product paths are unchanged. Their leaf commands remain available and must be rerun when a change
+touches the corresponding path.
 
 Measure cross-session clock drift for the hypertok subject before a full arena run. The command
 uses three fresh Node processes and three fresh isolated Chrome lifetimes, with 21 samples at 4 MiB
@@ -98,20 +108,39 @@ Every available encode or decode row contains:
 - workload and byte count
 - reference and exact version
 - environment, tier, SIMD level, and clock regime
-- sample count, median, p95, variance, units, and ratio
+- sample count, median, p95, variance, relative noise, units, and ratio
+- the initial and final sample counts plus whether uncertainty triggered escalation
+- comparison noise and its resolution threshold beside every comparable ratio
+- per-run stability for OpenWebText rows
 - profile, mode, commit, and agreement key
 
 A ratio exists only when the reference emits the same token ids as the oracle on that workload.
 Different output remains measured and labelled, with `ratio: null`. An unavailable reference keeps
 its exact reason.
 
-Load reports keep transfer, decompression, materialisation, and resident memory separate. Browser
-runs record the resolved executable, browser version, cross-origin isolation, and local-request
-count.
+Load reports keep transfer, decompression, materialisation, and resident memory separate. Run
+`npm run measure:node:load`, `npm run measure:browser:load`, and
+`npm run measure:browser:transfer-size` when those paths change. Browser runs record the resolved
+executable, browser version, cross-origin isolation, and local-request count.
+
+`npm run measure:browser:transfer-size` records the compressed browser transfer needed to first
+tokenize for every available reference and vocabulary. Each self-contained ESM payload includes
+the package code, vocabulary data, and required wasm, is served with HTTP gzip content encoding,
+and is imported in a fresh isolated page before a one-character encode probe. The report records
+exact package versions, gzip body bytes, decoded module bytes, method, and unavailable references.
 
 ## Corpus and references
 
-`corpus/manifest.json` fixes six arena workloads by byte count and SHA-256. The reference registry
+`corpus/manifest.json` fixes seven arena workloads by byte count and SHA-256. The OpenWebText row
+uses a deterministic 50,000,000-byte slice of Stanford CS336's pinned `owt_train` sample. Its
+`<|endoftext|>` document separators become newlines so every reference receives ordinary text
+under one agreement contract. Reproduce the checked-in gzip payload with:
+
+```powershell
+node tools/acquire_openwebtext_slice.mjs --force
+```
+
+The reference registry
 lives in `common/reference_registry.mjs`; Node and browser adapters consume the same records and
 record availability per vocabulary. The bare `tiktoken-wasm` package remains an unavailable record
 because its exact npm name returned E404. The installed `@goliapkg/tiktoken-wasm` implementation is

@@ -3,9 +3,13 @@ import { measureDecodeArtifactPair } from "../common/decode_artifact_pricing.mjs
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const seen = [];
 const runtime = Object.freeze({
   encodeSync: (text) => Uint32Array.from(encoder.encode(text)),
-  decode: (ids) => decoder.decode(Uint8Array.from(ids)),
+  decode: (ids) => {
+    seen.push(ids);
+    return decoder.decode(Uint8Array.from(ids));
+  },
 });
 let tick = 0;
 const report = measureDecodeArtifactPair({
@@ -21,6 +25,7 @@ assert.equal(report.rows[0].candidateOverBaseline, 1);
 assert.equal(report.rows[0].baselineOverCandidate, 1);
 assert.equal(report.rows[0].baseline.n, 3);
 assert.equal(report.rows[0].candidate.n, 3);
+assert.ok(seen.every((ids) => ids instanceof Uint32Array));
 
 assert.throws(
   () => measureDecodeArtifactPair({
@@ -34,3 +39,4 @@ assert.throws(
 );
 
 console.log("decode artifact pricing PASS: rows=1 alternating=1 mutation_red=1");
+console.log("decode-artifact-pricing-preserves-natural-hypertok-container PASS");

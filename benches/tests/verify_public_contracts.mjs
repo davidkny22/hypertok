@@ -132,11 +132,23 @@ const validRow = benchmarkRow({
   clockRegime: "performance.now",
   status: "measured",
   comparisonStatus: "identical",
-  n: 11,
+  n: 5,
   median: 100,
   p95: 110,
   variance: 4,
+  relativeNoise: 0.02,
+  sampling: Object.freeze({ initialN: 5, finalN: 5, escalated: false }),
+  stability: null,
   ratio: 1,
+  comparisonNoise: Object.freeze({
+    subjectNoise: 0.02,
+    referenceNoise: 0.02,
+    combinedNoise: Math.hypot(0.02, 0.02),
+    ratio: 1,
+    logGap: 0,
+    threshold: 2 * Math.hypot(0.02, 0.02),
+    resolved: false,
+  }),
   units: "MB/s",
   commit: runIdentity.commit,
   agreementKey: receipt.agreementKey,
@@ -165,26 +177,52 @@ assert.throws(
   () => benchmarkRow({ ...validRow, comparisonStatus: "different" }),
   /cannot carry a ratio/,
 );
-assert.equal(
+assert.deepEqual(
   benchmarkConfiguration({
     HYPERTOK_BENCH_PROFILE: "arena",
     HYPERTOK_BENCH_MODE: "full",
-  }).n,
-  21,
+  }),
+  {
+    profile: "arena",
+    mode: "full",
+    n: 5,
+    maxN: 11,
+    openWebTextN: 3,
+    warmup: 2,
+    targetBytesPerSample: 262_144,
+    decodeContainerRegimes: ["repeated", "fresh"],
+    carriedForwardAxes: ["transfer", "decompression", "materialisation", "memory"],
+  },
 );
 const smokeConfiguration = benchmarkConfiguration({
   HYPERTOK_BENCH_PROFILE: "arena",
   HYPERTOK_BENCH_MODE: "smoke",
   HYPERTOK_BENCH_N: "1",
+  HYPERTOK_BENCH_MAX_N: "1",
+  HYPERTOK_BENCH_OPENWEBTEXT_N: "1",
   HYPERTOK_BENCH_WARMUP: "0",
   HYPERTOK_BENCH_TARGET_BYTES: "1024",
 });
 assert.equal(smokeConfiguration.mode, "smoke");
 assert.equal(smokeConfiguration.n, 1);
+assert.equal(smokeConfiguration.maxN, 1);
+assert.equal(smokeConfiguration.openWebTextN, 1);
 assert.deepEqual(smokeConfiguration.decodeContainerRegimes, ["repeated", "fresh"]);
 assert.throws(
   () => benchmarkConfiguration({ HYPERTOK_BENCH_PROFILE: "unknown" }),
   /Unknown benchmark profile/,
+);
+assert.throws(
+  () => benchmarkRow({ ...validRow, relativeNoise: undefined }),
+  /relativeNoise/,
+);
+assert.throws(
+  () => benchmarkRow({ ...validRow, sampling: { ...validRow.sampling, finalN: 11 } }),
+  /sampling receipt/,
+);
+assert.throws(
+  () => benchmarkRow({ ...validRow, comparisonNoise: null }),
+  /comparison noise receipt/,
 );
 
 console.log(

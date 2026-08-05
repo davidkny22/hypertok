@@ -26,10 +26,17 @@ import {
   DECODE_FIELD_SEGMENT_BYTES,
   ORDINARY_ID_REFERENCES,
 } from "./common/throughput.mjs";
-import { summarize } from "./common/timing.mjs";
 import { benchmarkRow } from "./common/row.mjs";
 import { writeRunResult } from "./common/output.mjs";
 import { vocabularyRegistry } from "./common/vocabularies.mjs";
+import {
+  extendMeasuredRow,
+  measuredRow,
+  planEscalations,
+  publicMeasuredRow,
+  sampleCountForWorkload,
+  samplingKey,
+} from "./common/verdict_sampling.mjs";
 
 const benchesDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryDirectory = path.resolve(benchesDirectory, "..");
@@ -64,6 +71,96 @@ const server = await startHarnessServer();
 const { browser, browserVersion, executablePath, executableSource } =
   await launchHarnessBrowser();
 const requestLedgers = [];
+let escalationPlan;
+
+async function measurePage(page, workload, reference, containerRegime, n, warmup) {
+  return page.evaluate(
+    async ({ corpusUrl, expectedBytes, n, warmup, targetBytesPerSample, ordinary, segmentBytes, containerRegime }) => {
+      if (containerRegime !== "repeated" && containerRegime !== "fresh") {
+        throw new Error("Unknown decode container regime");
+      }
+      const response = await fetch(corpusUrl, { cache: "no-store" });
+      if (!response.ok) throw new Error(`${corpusUrl}: HTTP ${response.status}`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.length !== expectedBytes) throw new Error("Workload byte count mismatch");
+      const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      const segmentTexts = [];
+      let current = "";
+      let currentBytes = 0;
+      for (const scalar of text) {
+        const codePoint = scalar.codePointAt(0);
+        current += scalar;
+        currentBytes +=
+          codePoint < 0x80 ? 1 : codePoint < 0x800 ? 2 : codePoint < 0x10000 ? 3 : 4;
+        if (currentBytes >= segmentBytes) {
+          segmentTexts.push(current);
+          current = "";
+          currentBytes = 0;
+        }
+      }
+      if (current.length !== 0) segmentTexts.push(current);
+      const segments = segmentTexts.map((segmentText) => {
+        const encoded = globalThis.activeReference.encode(segmentText);
+        const ids = ordinary ? Array.from(encoded) : encoded;
+        if (globalThis.activeReference.decode(ids) !== segmentText) {
+          throw new Error("Decoded text mismatch");
+        }
+        return ids;
+      });
+      const tokenCount = segments.reduce((sum, ids) => sum + ids.length, 0);
+      const repetitions = Math.max(
+        1,
+        Math.min(512, Math.ceil(targetBytesPerSample / bytes.length)),
+      );
+      const freshSampleInputs = () => Array.from(
+        { length: repetitions },
+        () => segments.map((ids) => ids.slice()),
+      );
+      let decoded = "";
+      for (let sample = 0; sample < warmup; sample += 1) {
+        const sampleInputs = containerRegime === "fresh" ? freshSampleInputs() : null;
+        for (let repetition = 0; repetition < repetitions; repetition += 1) {
+          const inputs = sampleInputs === null ? segments : sampleInputs[repetition];
+          for (const ids of inputs) decoded = globalThis.activeReference.decode(ids);
+        }
+      }
+      const samples = [];
+      for (let sample = 0; sample < n; sample += 1) {
+        const sampleInputs = containerRegime === "fresh" ? freshSampleInputs() : null;
+        const started = performance.now();
+        for (let repetition = 0; repetition < repetitions; repetition += 1) {
+          const inputs = sampleInputs === null ? segments : sampleInputs[repetition];
+          for (const ids of inputs) decoded = globalThis.activeReference.decode(ids);
+        }
+        const elapsed = performance.now() - started;
+        if (!Number.isFinite(elapsed) || elapsed <= 0) {
+          throw new Error(`Invalid decode duration: ${elapsed}`);
+        }
+        samples.push((bytes.length * repetitions) / (elapsed * 1_000));
+      }
+      if (typeof decoded !== "string" || decoded.length === 0) {
+        throw new Error("Timed decode produced no text");
+      }
+      return {
+        samples,
+        tokenCount,
+        iterationsPerSample: segments.length * repetitions,
+        bytesPerSample: bytes.length * repetitions,
+        exact: true,
+      };
+    },
+    {
+      corpusUrl: `${server.origin}/corpus/${workload.path}`,
+      expectedBytes: workload.bytes,
+      n,
+      warmup,
+      targetBytesPerSample: configuration.targetBytesPerSample,
+      ordinary: ORDINARY_ID_REFERENCES.includes(reference),
+      segmentBytes: DECODE_FIELD_SEGMENT_BYTES,
+      containerRegime,
+    },
+  );
+}
 
 try {
   for (const containerRegime of configuration.decodeContainerRegimes) {
@@ -78,79 +175,16 @@ try {
         }
         const load = await loadReferencePayload(page, server.origin, slug, vocabulary);
         for (const workload of workloads) {
-          const result = await page.evaluate(
-          async ({ corpusUrl, expectedBytes, n, warmup, ordinary, segmentBytes, containerRegime }) => {
-            if (containerRegime !== "repeated" && containerRegime !== "fresh") {
-              throw new Error("Unknown decode container regime");
-            }
-            const response = await fetch(corpusUrl, { cache: "no-store" });
-            if (!response.ok) throw new Error(`${corpusUrl}: HTTP ${response.status}`);
-            const bytes = new Uint8Array(await response.arrayBuffer());
-            if (bytes.length !== expectedBytes) throw new Error("Workload byte count mismatch");
-            const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-            const segmentTexts = [];
-            let current = "";
-            let currentBytes = 0;
-            for (const scalar of text) {
-              const codePoint = scalar.codePointAt(0);
-              current += scalar;
-              currentBytes +=
-                codePoint < 0x80 ? 1 : codePoint < 0x800 ? 2 : codePoint < 0x10000 ? 3 : 4;
-              if (currentBytes >= segmentBytes) {
-                segmentTexts.push(current);
-                current = "";
-                currentBytes = 0;
-              }
-            }
-            if (current.length !== 0) segmentTexts.push(current);
-            const segments = segmentTexts.map((segmentText) => {
-              const encoded = globalThis.activeReference.encode(segmentText);
-              const ids = ordinary ? Array.from(encoded) : encoded;
-              if (globalThis.activeReference.decode(ids) !== segmentText) {
-                throw new Error("Decoded text mismatch");
-              }
-              return ids;
-            });
-            const tokenCount = segments.reduce((sum, ids) => sum + ids.length, 0);
-            const freshInputs = containerRegime === "fresh"
-              ? Array.from(
-                  { length: warmup + n },
-                  () => segments.map((ids) => ids.slice()),
-                )
-              : null;
-            let decoded = "";
-            for (let sample = 0; sample < warmup; sample += 1) {
-              const inputs = freshInputs === null ? segments : freshInputs[sample];
-              for (const ids of inputs) decoded = globalThis.activeReference.decode(ids);
-            }
-            const samples = [];
-            for (let sample = 0; sample < n; sample += 1) {
-              const inputs = freshInputs === null ? segments : freshInputs[warmup + sample];
-              const started = performance.now();
-              for (const ids of inputs) decoded = globalThis.activeReference.decode(ids);
-              const elapsed = performance.now() - started;
-              if (!Number.isFinite(elapsed) || elapsed <= 0) {
-                throw new Error(`Invalid decode duration: ${elapsed}`);
-              }
-              samples.push(bytes.length / (elapsed * 1_000));
-            }
-            if (typeof decoded !== "string" || decoded.length === 0) {
-              throw new Error("Timed decode produced no text");
-            }
-            return { samples, tokenCount, segmentCount: segments.length, exact: true };
-          },
-            {
-              corpusUrl: `${server.origin}/corpus/${workload.path}`,
-              expectedBytes: workload.bytes,
-              n: configuration.n,
-              warmup: configuration.warmup,
-              ordinary: ORDINARY_ID_REFERENCES.includes(load.reference),
-              segmentBytes: DECODE_FIELD_SEGMENT_BYTES,
-              containerRegime,
-            },
+          const initialN = sampleCountForWorkload(configuration, workload);
+          const result = await measurePage(
+            page,
+            workload,
+            load.reference,
+            containerRegime,
+            initialN,
+            configuration.warmup,
           );
-          const statistics = summarize(result.samples);
-          rows.push({
+          rows.push(measuredRow({ row: {
             vocabulary,
             workload: workload.id,
             workloadBytes: workload.bytes,
@@ -165,18 +199,50 @@ try {
               `performance.now; cross-origin isolated Chrome; warm cache; 4096-byte field segments; natural id containers; ${containerRegime} container regime`,
             status: "measured",
             exact: result.exact,
-            n: statistics.n,
-            median: statistics.median,
-            p95: statistics.p95,
-            variance: statistics.variance,
             units: "MB/s",
-            iterationsPerSample: result.segmentCount,
-            bytesPerSample: workload.bytes,
+            iterationsPerSample: result.iterationsPerSample,
+            bytesPerSample: result.bytesPerSample,
             tokenCount: result.tokenCount,
-          });
+          }, samples: result.samples, initialN }));
           console.log(
-            `${containerRegime} ${load.reference} ${workload.id}: ${statistics.median.toFixed(3)} MB/s`,
+            `${containerRegime} ${load.reference} ${workload.id}: ${rows.at(-1).median.toFixed(3)} MB/s`,
           );
+        }
+        await disposeReferencePayload(page);
+      } finally {
+        await page.close();
+      }
+    }
+  }
+
+  escalationPlan = planEscalations(rows, agreementReceipt, configuration.maxN);
+  for (const containerRegime of configuration.decodeContainerRegimes) {
+    for (const { slug, vocabulary, reference } of referencePayloads) {
+      const matching = rows.filter((row) =>
+        row.containerRegime === containerRegime &&
+        row.vocabulary === vocabulary &&
+        row.reference === reference &&
+        escalationPlan.targets.has(samplingKey(row))
+      );
+      if (matching.length === 0) continue;
+      const page = await browser.newPage();
+      const requests = observeRequests(page);
+      requestLedgers.push(requests);
+      try {
+        await page.goto(`${server.origin}/blank`, { waitUntil: "load" });
+        const load = await loadReferencePayload(page, server.origin, slug, vocabulary);
+        if (load.reference !== reference) throw new Error("Escalation reference mismatch");
+        for (const row of matching) {
+          const workload = workloads.find(({ id }) => id === row.workload);
+          const result = await measurePage(
+            page,
+            workload,
+            reference,
+            containerRegime,
+            configuration.maxN - row.n,
+            configuration.warmup,
+          );
+          rows[rows.indexOf(row)] = extendMeasuredRow(row, result.samples);
         }
         await disposeReferencePayload(page);
       } finally {
@@ -231,10 +297,11 @@ try {
     commit: runIdentity.commit,
     runIdentity,
     agreementKey: agreementReceipt.agreementKey,
+    samplingDecisions: escalationPlan.decisions,
     configuration,
     rows: addHypertokRatios(rows, agreementReceipt).map((row) =>
       benchmarkRow({
-        ...row,
+        ...publicMeasuredRow(row),
         profile: configuration.profile,
         mode: configuration.mode,
         commit: runIdentity.commit,

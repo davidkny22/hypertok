@@ -1,5 +1,18 @@
 import { summarize } from "./timing.mjs";
 import { agreementForRow } from "./agreement_receipt.mjs";
+import {
+  comparisonNoise,
+  OPENWEBTEXT_N,
+  VERDICT_INITIAL_N,
+  VERDICT_MAX_N,
+} from "./verdict_sampling.mjs";
+
+export const CARRIED_FORWARD_AXES = Object.freeze([
+  "transfer",
+  "decompression",
+  "materialisation",
+  "memory",
+]);
 
 export function benchmarkProfile(environment = process.env) {
   const profile = environment.HYPERTOK_BENCH_PROFILE ?? "arena";
@@ -20,13 +33,22 @@ export function benchmarkMode(environment = process.env) {
 export function benchmarkConfiguration(environment = process.env) {
   const profile = benchmarkProfile(environment);
   const mode = benchmarkMode(environment);
-  const n = Number(environment.HYPERTOK_BENCH_N ?? 21);
+  const n = Number(environment.HYPERTOK_BENCH_N ?? VERDICT_INITIAL_N);
+  const maxN = Number(environment.HYPERTOK_BENCH_MAX_N ?? VERDICT_MAX_N);
+  const openWebTextN = Number(environment.HYPERTOK_BENCH_OPENWEBTEXT_N ?? OPENWEBTEXT_N);
   const warmup = Number(environment.HYPERTOK_BENCH_WARMUP ?? 2);
   const targetBytesPerSample = Number(
     environment.HYPERTOK_BENCH_TARGET_BYTES ?? 262_144,
   );
-  if (!Number.isInteger(n) || n < 1 || !Number.isInteger(warmup) || warmup < 0) {
-    throw new Error("Benchmark n and warmup must be non-negative integers with n at least one");
+  if (
+    !Number.isInteger(n) || n < 1 ||
+    !Number.isInteger(maxN) || maxN < n ||
+    !Number.isInteger(openWebTextN) || openWebTextN < 1 ||
+    !Number.isInteger(warmup) || warmup < 0
+  ) {
+    throw new Error(
+      "Benchmark counts must be integers with n and OpenWebText n at least one, max n at least n, and non-negative warmup",
+    );
   }
   if (!Number.isSafeInteger(targetBytesPerSample) || targetBytesPerSample < 1) {
     throw new Error("Benchmark target bytes must be a positive safe integer");
@@ -35,9 +57,12 @@ export function benchmarkConfiguration(environment = process.env) {
     profile,
     mode,
     n,
+    maxN,
+    openWebTextN,
     warmup,
     targetBytesPerSample,
     decodeContainerRegimes: DECODE_CONTAINER_REGIMES,
+    carriedForwardAxes: CARRIED_FORWARD_AXES,
   });
 }
 
@@ -45,20 +70,25 @@ export function iterationsForWorkload(bytes, targetBytesPerSample) {
   return Math.max(1, Math.min(512, Math.ceil(targetBytesPerSample / bytes)));
 }
 
-export async function measureEncodeThroughput(adapter, workload, configuration) {
+export async function measureEncodeThroughput(
+  adapter,
+  workload,
+  configuration,
+  { n = configuration.n, warmup = configuration.warmup } = {},
+) {
   const iterations = iterationsForWorkload(
     workload.bytes,
     configuration.targetBytesPerSample,
   );
   let lastIds = new Uint32Array();
-  for (let sample = 0; sample < configuration.warmup; sample += 1) {
+  for (let sample = 0; sample < warmup; sample += 1) {
     for (let iteration = 0; iteration < iterations; iteration += 1) {
       lastIds = adapter.encode(workload.text);
     }
   }
 
   const megabytesPerSecond = [];
-  for (let sample = 0; sample < configuration.n; sample += 1) {
+  for (let sample = 0; sample < n; sample += 1) {
     const started = performance.now();
     for (let iteration = 0; iteration < iterations; iteration += 1) {
       lastIds = adapter.encode(workload.text);
@@ -77,6 +107,7 @@ export async function measureEncodeThroughput(adapter, workload, configuration) 
     bytesPerSample: workload.bytes * iterations,
     tokenCount: lastIds.length,
     statistics: summarize(megabytesPerSecond),
+    samples: Object.freeze(megabytesPerSecond),
   });
 }
 
@@ -92,7 +123,6 @@ export const ORDINARY_ID_REFERENCES = Object.freeze([
   "gpt-tokenizer",
   "js-tiktoken",
   "@lenml/tokenizers",
-  "hypertok",
 ]);
 
 export function decodeFieldSegments(text, targetBytes = DECODE_FIELD_SEGMENT_BYTES) {
@@ -130,8 +160,13 @@ export async function measureDecodeThroughput(
   workload,
   configuration,
   containerRegime = "repeated",
+  { n = configuration.n, warmup = configuration.warmup } = {},
 ) {
   decodeContainerRegime(containerRegime);
+  const repetitions = iterationsForWorkload(
+    workload.bytes,
+    configuration.targetBytesPerSample,
+  );
   const ordinary = ORDINARY_ID_REFERENCES.includes(adapter.id);
   const segments = decodeFieldSegments(workload.text).map((segmentText) => {
     const encoded = adapter.encode(segmentText);
@@ -143,31 +178,39 @@ export async function measureDecodeThroughput(
     return ids;
   });
   const tokenCount = segments.reduce((sum, ids) => sum + ids.length, 0);
-  const freshInputs = containerRegime === "fresh"
-    ? Array.from(
-        { length: configuration.warmup + configuration.n },
-        () => segments.map(cloneTokenIds),
-      )
-    : null;
+  const freshSampleInputs = () => Array.from(
+    { length: repetitions },
+    () => segments.map(cloneTokenIds),
+  );
 
   let lastText = "";
-  for (let sample = 0; sample < configuration.warmup; sample += 1) {
-    const inputs = freshInputs === null ? segments : freshInputs[sample];
-    for (const ids of inputs) lastText = adapter.decode(ids);
+  for (let sample = 0; sample < warmup; sample += 1) {
+    const sampleInputs = containerRegime === "fresh" ? freshSampleInputs() : null;
+    for (let repetition = 0; repetition < repetitions; repetition += 1) {
+      const inputs = sampleInputs === null
+        ? segments
+        : sampleInputs[repetition];
+      for (const ids of inputs) lastText = adapter.decode(ids);
+    }
   }
 
   const megabytesPerSecond = [];
-  for (let sample = 0; sample < configuration.n; sample += 1) {
-    const inputs = freshInputs === null
-      ? segments
-      : freshInputs[configuration.warmup + sample];
+  for (let sample = 0; sample < n; sample += 1) {
+    const sampleInputs = containerRegime === "fresh" ? freshSampleInputs() : null;
     const started = performance.now();
-    for (const ids of inputs) lastText = adapter.decode(ids);
+    for (let repetition = 0; repetition < repetitions; repetition += 1) {
+      const inputs = sampleInputs === null
+        ? segments
+        : sampleInputs[repetition];
+      for (const ids of inputs) lastText = adapter.decode(ids);
+    }
     const elapsedMilliseconds = performance.now() - started;
     if (!Number.isFinite(elapsedMilliseconds) || elapsedMilliseconds <= 0) {
       throw new Error(`Invalid decode duration: ${elapsedMilliseconds}`);
     }
-    megabytesPerSecond.push(workload.bytes / (elapsedMilliseconds * 1_000));
+    megabytesPerSecond.push(
+      (workload.bytes * repetitions) / (elapsedMilliseconds * 1_000),
+    );
   }
 
   if (typeof lastText !== "string" || lastText.length === 0) {
@@ -175,12 +218,13 @@ export async function measureDecodeThroughput(
   }
 
   return Object.freeze({
-    iterationsPerSample: segments.length,
-    bytesPerSample: workload.bytes,
+    iterationsPerSample: segments.length * repetitions,
+    bytesPerSample: workload.bytes * repetitions,
     tokenCount,
     containerRegime,
     exact: true,
     statistics: summarize(megabytesPerSecond),
+    samples: Object.freeze(megabytesPerSecond),
   });
 }
 
@@ -196,6 +240,14 @@ export function addHypertokRatios(rows, agreementReceipt) {
         row.median,
       ]),
   );
+  const subjects = new Map(
+    rows
+      .filter(({ reference, status }) => reference === "hypertok" && status === "measured")
+      .map((row) => [
+        `${row.vocabulary}\u0000${row.workload}\u0000${row.containerRegime ?? ""}`,
+        row,
+      ]),
+  );
   return rows.map((row) => {
     const agreement = agreementForRow(
       agreementReceipt,
@@ -206,16 +258,21 @@ export function addHypertokRatios(rows, agreementReceipt) {
     if (agreement.referenceVersion !== row.referenceVersion) {
       throw new Error(`Agreement version mismatch for ${row.reference}`);
     }
+    const key = `${row.vocabulary}\u0000${row.workload}\u0000${row.containerRegime ?? ""}`;
+    const ratio =
+      row.status === "measured" && agreement.status === "identical"
+        ? medians.get(key) / row.median
+        : null;
+    const subject = subjects.get(key);
     return {
       ...row,
       agreementKey: agreementReceipt.agreementKey,
       comparisonStatus: agreement.status,
-      ratio:
-        row.status === "measured" && agreement.status === "identical"
-          ? medians.get(
-              `${row.vocabulary}\u0000${row.workload}\u0000${row.containerRegime ?? ""}`,
-            ) / row.median
-          : null,
+      ratio,
+      comparisonNoise:
+        ratio === null || subject === undefined
+          ? null
+          : comparisonNoise(subject, row),
     };
   });
 }

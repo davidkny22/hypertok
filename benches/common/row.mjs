@@ -43,14 +43,68 @@ export function benchmarkRow(input) {
   for (const name of ["n", "median", "p95", "variance"]) {
     if (!Number.isFinite(input[name])) throw new Error(`Benchmark row requires finite ${name}`);
   }
+  if (!Number.isInteger(input.n) || input.n < 1) {
+    throw new Error("Benchmark row n must be a positive integer");
+  }
+  if (!Number.isFinite(input.relativeNoise) || input.relativeNoise < 0) {
+    throw new Error("Measured benchmark row requires finite non-negative relativeNoise");
+  }
+  if (
+    input.sampling === null ||
+    typeof input.sampling !== "object" ||
+    !Number.isInteger(input.sampling.initialN) ||
+    !Number.isInteger(input.sampling.finalN) ||
+    input.sampling.initialN < 1 ||
+    input.sampling.finalN !== input.n ||
+    typeof input.sampling.escalated !== "boolean" ||
+    (input.sampling.escalated
+      ? input.sampling.finalN <= input.sampling.initialN
+      : input.sampling.finalN !== input.sampling.initialN)
+  ) {
+    throw new Error("Measured benchmark row requires a consistent sampling receipt");
+  }
   if (input.comparisonStatus === "identical" && !Number.isFinite(input.ratio)) {
     throw new Error("Comparable benchmark row requires a finite ratio");
+  }
+  if (
+    input.comparisonStatus === "identical" &&
+    (
+      input.comparisonNoise === null ||
+      typeof input.comparisonNoise !== "object" ||
+      [
+        "subjectNoise",
+        "referenceNoise",
+        "combinedNoise",
+        "ratio",
+        "logGap",
+        "threshold",
+      ].some((name) =>
+        !Number.isFinite(input.comparisonNoise[name]) || input.comparisonNoise[name] < 0
+      ) ||
+      typeof input.comparisonNoise.resolved !== "boolean" ||
+      input.comparisonNoise.ratio !== input.ratio
+    )
+  ) {
+    throw new Error("Comparable benchmark row requires its finite comparison noise receipt");
   }
   if (input.comparisonStatus === "different" && input.ratio !== null) {
     throw new Error("Different-output benchmark row cannot carry a ratio");
   }
-  if (!Number.isInteger(input.n) || input.n < 1) {
-    throw new Error("Benchmark row n must be a positive integer");
+  if (input.comparisonStatus === "different" && input.comparisonNoise !== null) {
+    throw new Error("Different-output benchmark row cannot carry comparison noise");
+  }
+  if (input.workload === "openwebtext-slice") {
+    if (
+      input.stability === null ||
+      typeof input.stability !== "object" ||
+      ["minimum", "maximum", "relativeRange", "relativeStandardDeviation"].some(
+        (name) => !Number.isFinite(input.stability[name]) || input.stability[name] < 0,
+      )
+    ) {
+      throw new Error("OpenWebText benchmark row requires finite per-run stability");
+    }
+  } else if (input.stability !== null) {
+    throw new Error("Only OpenWebText rows carry the large-corpus stability receipt");
   }
   if (
     input.median < 0 ||

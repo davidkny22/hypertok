@@ -83,6 +83,14 @@ for (const name of [
 ]) {
   routes.set(`/corpus/${name}`, [path.join(benchesDirectory, "corpus", name), "text/plain; charset=utf-8"]);
 }
+routes.set(
+  "/corpus/openwebtext-slice.txt.gz",
+  [
+    path.join(benchesDirectory, "corpus", "openwebtext-slice.txt.gz"),
+    "text/plain; charset=utf-8",
+    "gzip",
+  ],
+);
 
 for (const slug of referenceSlugs) {
   routes.set(
@@ -106,14 +114,16 @@ const page = Buffer.from(`<!doctype html>
 </script>
 `);
 
-function headers(contentType) {
-  return {
+function headers(contentType, contentEncoding) {
+  const values = {
     "Content-Type": contentType,
     "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Embedder-Policy": "require-corp",
     "Cross-Origin-Resource-Policy": "same-origin",
     "Cache-Control": "no-store",
   };
+  if (contentEncoding !== undefined) values["Content-Encoding"] = contentEncoding;
+  return values;
 }
 
 export async function startHarnessServer({
@@ -133,9 +143,10 @@ export async function startHarnessServer({
     }
     if (
       !Array.isArray(value) ||
-      value.length !== 2 ||
+      (value.length !== 2 && value.length !== 3) ||
       typeof value[0] !== "string" ||
       typeof value[1] !== "string" ||
+      (value[2] !== undefined && typeof value[2] !== "string") ||
       !fs.existsSync(value[0]) ||
       !fs.statSync(value[0]).isFile()
     ) {
@@ -161,8 +172,8 @@ export async function startHarnessServer({
       response.end("not found\n");
       return;
     }
-    const [filePath, contentType] = route;
-    response.writeHead(200, headers(contentType));
+    const [filePath, contentType, contentEncoding] = route;
+    response.writeHead(200, headers(contentType, contentEncoding));
     fs.createReadStream(filePath).pipe(response);
   });
 

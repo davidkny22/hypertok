@@ -16,6 +16,7 @@ const testFiles = Object.freeze([
   "tests/verify_browser_adapters.mjs",
   "tests/verify_decode_throughput.mjs",
   "tests/verify_decode_artifact_pricing.mjs",
+  "tests/verify_verdict_sampling.mjs",
   "tests/verify_harness_self_check_node.mjs",
   "tests/verify_harness_self_check_browser.mjs",
   "tests/verify_harness_self_check_cross_env.mjs",
@@ -38,8 +39,12 @@ const benchmarkFiles = Object.freeze([
   "measure_browser_throughput.mjs",
   "measure_node_decode.mjs",
   "measure_browser_decode.mjs",
-  "measure_node_load.mjs",
-  "measure_browser_load.mjs",
+]);
+const carriedForwardArenaAxes = Object.freeze([
+  "transfer",
+  "decompression",
+  "materialisation",
+  "memory",
 ]);
 const shippingFiles = Object.freeze([
   "script-measurement/run.mjs",
@@ -78,6 +83,7 @@ function commandPlan(args) {
     profile,
     mode,
     files: profile === "arena" ? benchmarkFiles : shippingFiles,
+    carriedForwardAxes: profile === "arena" ? carriedForwardArenaAxes : [],
   };
 }
 
@@ -112,6 +118,8 @@ if (plan.command === "benchmark") {
   }
   if (plan.mode === "smoke") {
     environment.HYPERTOK_BENCH_N = "1";
+    environment.HYPERTOK_BENCH_MAX_N = "1";
+    environment.HYPERTOK_BENCH_OPENWEBTEXT_N = "1";
     environment.HYPERTOK_BENCH_WARMUP = "0";
     environment.HYPERTOK_BENCH_TARGET_BYTES = "1024";
     environment.HYPERTOK_LOAD_N = "1";
@@ -119,6 +127,9 @@ if (plan.command === "benchmark") {
     environment.HYPERTOK_SCRIPT_N = "1";
     environment.HYPERTOK_SCRIPT_WARMUP = "0";
     environment.HYPERTOK_SCRIPT_TARGET_BYTES = "1024";
+  }
+  if (plan.carriedForwardAxes.length > 0) {
+    console.log(`carried-forward axes: ${plan.carriedForwardAxes.join(", ")}`);
   }
 }
 

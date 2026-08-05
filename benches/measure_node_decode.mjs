@@ -21,6 +21,14 @@ import {
 import { benchmarkRow } from "./common/row.mjs";
 import { writeRunResult } from "./common/output.mjs";
 import { vocabularyRegistry } from "./common/vocabularies.mjs";
+import {
+  extendMeasuredRow,
+  measuredRow,
+  planEscalations,
+  publicMeasuredRow,
+  sampleCountForWorkload,
+  samplingKey,
+} from "./common/verdict_sampling.mjs";
 
 const benchesDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryDirectory = path.resolve(benchesDirectory, "..");
@@ -57,13 +65,15 @@ for (const containerRegime of configuration.decodeContainerRegimes) {
       const adapter = await createNodeAdapter(reference, vocabulary);
       try {
         for (const workload of workloads) {
+          const initialN = sampleCountForWorkload(configuration, workload);
           const result = await measureDecodeThroughput(
             adapter,
             workload,
             configuration,
             containerRegime,
+            { n: initialN },
           );
-          rows.push({
+          rows.push(measuredRow({ row: {
             vocabulary,
             workload: workload.id,
             workloadBytes: workload.bytes,
@@ -78,18 +88,45 @@ for (const containerRegime of configuration.decodeContainerRegimes) {
               `performance.now; Node single process; warm cache; 4096-byte field segments; natural id containers; ${containerRegime} container regime`,
             status: "measured",
             exact: result.exact,
-            n: result.statistics.n,
-            median: result.statistics.median,
-            p95: result.statistics.p95,
-            variance: result.statistics.variance,
             units: "MB/s",
             iterationsPerSample: result.iterationsPerSample,
             bytesPerSample: result.bytesPerSample,
             tokenCount: result.tokenCount,
-          });
+          }, samples: result.samples, initialN }));
           console.log(
             `${containerRegime} ${adapter.id} ${workload.id}: ${result.statistics.median.toFixed(3)} MB/s`,
           );
+        }
+      } finally {
+        adapter.dispose();
+      }
+    }
+  }
+}
+
+const escalationPlan = planEscalations(rows, agreementReceipt, configuration.maxN);
+for (const containerRegime of configuration.decodeContainerRegimes) {
+  for (const { id: vocabulary } of vocabularyRegistry) {
+    for (const reference of nodeReferenceIds(vocabulary)) {
+      const matching = rows.filter((row) =>
+        row.containerRegime === containerRegime &&
+        row.vocabulary === vocabulary &&
+        row.reference === reference &&
+        escalationPlan.targets.has(samplingKey(row))
+      );
+      if (matching.length === 0) continue;
+      const adapter = await createNodeAdapter(reference, vocabulary);
+      try {
+        for (const row of matching) {
+          const workload = workloads.find(({ id }) => id === row.workload);
+          const result = await measureDecodeThroughput(
+            adapter,
+            workload,
+            configuration,
+            containerRegime,
+            { n: configuration.maxN - row.n, warmup: configuration.warmup },
+          );
+          rows[rows.indexOf(row)] = extendMeasuredRow(row, result.samples);
         }
       } finally {
         adapter.dispose();
@@ -137,10 +174,11 @@ const output = {
   commit: runIdentity.commit,
   runIdentity,
   agreementKey: agreementReceipt.agreementKey,
+  samplingDecisions: escalationPlan.decisions,
   configuration,
   rows: addHypertokRatios(rows, agreementReceipt).map((row) =>
     benchmarkRow({
-      ...row,
+      ...publicMeasuredRow(row),
       profile: configuration.profile,
       mode: configuration.mode,
       commit: runIdentity.commit,

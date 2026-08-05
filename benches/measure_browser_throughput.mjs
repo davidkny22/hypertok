@@ -25,10 +25,17 @@ import {
   benchmarkConfiguration,
   iterationsForWorkload,
 } from "./common/throughput.mjs";
-import { summarize } from "./common/timing.mjs";
 import { benchmarkRow } from "./common/row.mjs";
 import { writeRunResult } from "./common/output.mjs";
 import { vocabularyRegistry } from "./common/vocabularies.mjs";
+import {
+  extendMeasuredRow,
+  measuredRow,
+  planEscalations,
+  publicMeasuredRow,
+  sampleCountForWorkload,
+  samplingKey,
+} from "./common/verdict_sampling.mjs";
 
 const benchesDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryDirectory = path.resolve(benchesDirectory, "..");
@@ -57,6 +64,50 @@ const server = await startHarnessServer();
 const { browser, browserVersion, executablePath, executableSource } =
   await launchHarnessBrowser();
 const requestLedgers = [];
+let escalationPlan;
+
+async function measurePage(page, workload, n, warmup) {
+  const iterations = iterationsForWorkload(
+    workload.bytes,
+    configuration.targetBytesPerSample,
+  );
+  const result = await page.evaluate(
+    async ({ corpusUrl, expectedBytes, iterationsPerSample, n, warmup }) => {
+      const response = await fetch(corpusUrl, { cache: "no-store" });
+      if (!response.ok) throw new Error(`${corpusUrl}: HTTP ${response.status}`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.length !== expectedBytes) throw new Error("Workload byte count mismatch");
+      const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      let ids = new Uint32Array();
+      for (let sample = 0; sample < warmup; sample += 1) {
+        for (let iteration = 0; iteration < iterationsPerSample; iteration += 1) {
+          ids = globalThis.activeReference.encode(text);
+        }
+      }
+      const samples = [];
+      for (let sample = 0; sample < n; sample += 1) {
+        const started = performance.now();
+        for (let iteration = 0; iteration < iterationsPerSample; iteration += 1) {
+          ids = globalThis.activeReference.encode(text);
+        }
+        const elapsed = performance.now() - started;
+        if (!Number.isFinite(elapsed) || elapsed <= 0) {
+          throw new Error(`Invalid encode duration: ${elapsed}`);
+        }
+        samples.push((bytes.length * iterationsPerSample) / (elapsed * 1_000));
+      }
+      return { samples, tokenCount: ids.length };
+    },
+    {
+      corpusUrl: `${server.origin}/corpus/${workload.path}`,
+      expectedBytes: workload.bytes,
+      iterationsPerSample: iterations,
+      n,
+      warmup,
+    },
+  );
+  return Object.freeze({ ...result, iterations });
+}
 
 try {
   for (const { slug, vocabulary } of referencePayloads) {
@@ -70,47 +121,9 @@ try {
       }
       const load = await loadReferencePayload(page, server.origin, slug, vocabulary);
       for (const workload of workloads) {
-        const iterations = iterationsForWorkload(
-          workload.bytes,
-          configuration.targetBytesPerSample,
-        );
-        const result = await page.evaluate(
-          async ({ corpusUrl, expectedBytes, iterationsPerSample, n, warmup }) => {
-            const response = await fetch(corpusUrl, { cache: "no-store" });
-            if (!response.ok) throw new Error(`${corpusUrl}: HTTP ${response.status}`);
-            const bytes = new Uint8Array(await response.arrayBuffer());
-            if (bytes.length !== expectedBytes) throw new Error("Workload byte count mismatch");
-            const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-            let ids = new Uint32Array();
-            for (let sample = 0; sample < warmup; sample += 1) {
-              for (let iteration = 0; iteration < iterationsPerSample; iteration += 1) {
-                ids = globalThis.activeReference.encode(text);
-              }
-            }
-            const samples = [];
-            for (let sample = 0; sample < n; sample += 1) {
-              const started = performance.now();
-              for (let iteration = 0; iteration < iterationsPerSample; iteration += 1) {
-                ids = globalThis.activeReference.encode(text);
-              }
-              const elapsed = performance.now() - started;
-              if (!Number.isFinite(elapsed) || elapsed <= 0) {
-                throw new Error(`Invalid encode duration: ${elapsed}`);
-              }
-              samples.push((bytes.length * iterationsPerSample) / (elapsed * 1_000));
-            }
-            return { samples, tokenCount: ids.length };
-          },
-          {
-            corpusUrl: `${server.origin}/corpus/${workload.path}`,
-            expectedBytes: workload.bytes,
-            iterationsPerSample: iterations,
-            n: configuration.n,
-            warmup: configuration.warmup,
-          },
-        );
-        const statistics = summarize(result.samples);
-        rows.push({
+        const initialN = sampleCountForWorkload(configuration, workload);
+        const result = await measurePage(page, workload, initialN, configuration.warmup);
+        rows.push(measuredRow({ row: {
           vocabulary,
           workload: workload.id,
           workloadBytes: workload.bytes,
@@ -121,17 +134,13 @@ try {
           simdLevel: "scalar",
           clockRegime: "performance.now; cross-origin isolated Chrome; warm cache",
           status: "measured",
-          n: statistics.n,
-          median: statistics.median,
-          p95: statistics.p95,
-          variance: statistics.variance,
           units: "MB/s",
-          iterationsPerSample: iterations,
-          bytesPerSample: workload.bytes * iterations,
+          iterationsPerSample: result.iterations,
+          bytesPerSample: workload.bytes * result.iterations,
           tokenCount: result.tokenCount,
-        });
+        }, samples: result.samples, initialN }));
         console.log(
-          `${load.reference} ${workload.id}: ${statistics.median.toFixed(3)} MB/s`,
+          `${load.reference} ${workload.id}: ${rows.at(-1).median.toFixed(3)} MB/s`,
         );
       }
       await disposeReferencePayload(page);
@@ -166,6 +175,37 @@ try {
     }
   }
 
+  escalationPlan = planEscalations(rows, agreementReceipt, configuration.maxN);
+  for (const { slug, vocabulary, reference } of referencePayloads) {
+    const matching = rows.filter((row) =>
+      row.vocabulary === vocabulary &&
+      row.reference === reference &&
+      escalationPlan.targets.has(samplingKey(row))
+    );
+    if (matching.length === 0) continue;
+    const page = await browser.newPage();
+    const requests = observeRequests(page);
+    requestLedgers.push(requests);
+    try {
+      await page.goto(`${server.origin}/blank`, { waitUntil: "load" });
+      const load = await loadReferencePayload(page, server.origin, slug, vocabulary);
+      if (load.reference !== reference) throw new Error("Escalation reference mismatch");
+      for (const row of matching) {
+        const workload = workloads.find(({ id }) => id === row.workload);
+        const result = await measurePage(
+          page,
+          workload,
+          configuration.maxN - row.n,
+          configuration.warmup,
+        );
+        rows[rows.indexOf(row)] = extendMeasuredRow(row, result.samples);
+      }
+      await disposeReferencePayload(page);
+    } finally {
+      await page.close();
+    }
+  }
+
   const requestProofs = requestLedgers.map((requests) => requests.assertLocal(server.origin));
   const localRequestCount = requestProofs.reduce((sum, proof) => sum + proof.requestCount, 0);
 
@@ -180,10 +220,11 @@ try {
     commit: runIdentity.commit,
     runIdentity,
     agreementKey: agreementReceipt.agreementKey,
+    samplingDecisions: escalationPlan.decisions,
     configuration,
     rows: addHypertokRatios(rows, agreementReceipt).map((row) =>
       benchmarkRow({
-        ...row,
+        ...publicMeasuredRow(row),
         profile: configuration.profile,
         mode: configuration.mode,
         axis: "encode",

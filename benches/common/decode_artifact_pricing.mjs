@@ -76,8 +76,8 @@ export function measureDecodeArtifactPair({
   const rows = [];
   for (const workload of workloads) {
     const segments = fieldSegments(workload.text).map((text) => {
-      const baselineIds = Array.from(baseline.encodeSync(text));
-      const candidateIds = Array.from(candidate.encodeSync(text));
+      const baselineIds = baseline.encodeSync(text);
+      const candidateIds = candidate.encodeSync(text);
       if (!exactIds(baselineIds, candidateIds)) {
         throw new Error(`${workload.id}: artifact encode disagreement`);
       }

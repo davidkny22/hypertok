@@ -260,14 +260,14 @@ export function measureDecodeRoutes({
           ? null
           : assembly.right.median / (assemblySegments.length * iterations),
       candidateMillisecondsPerAssemblySegment:
-        assemblySegments.length === 0
+        candidateAssemblySegments.length === 0
           ? null
-          : assembly.right.median / (assemblySegments.length * iterations),
+          : candidateAssembly.right.median / (candidateAssemblySegments.length * iterations),
       candidateMinusAssemblyMillisecondsPerSegment:
-        assemblySegments.length === 0
+        candidateAssemblySegments.length === 0
           ? null
-          : (assembly.right.median - assembly.left.median) /
-            (assemblySegments.length * iterations),
+          : (candidateAssembly.right.median - candidateAssembly.left.median) /
+            (candidateAssemblySegments.length * iterations),
       candidateToBaselineTimeRatio: all.right.median / all.left.median,
       candidateMode,
       containerRegime,

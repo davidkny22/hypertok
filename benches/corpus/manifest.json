@@ -87,6 +87,25 @@
       }
     },
     {
+      "id": "openwebtext-slice",
+      "role": "arena-large",
+      "label": "OpenWebText sampled slice",
+      "path": "openwebtext-slice.txt.gz",
+      "compression": "gzip",
+      "compressed_bytes": 19276042,
+      "compressed_sha256": "3e3a13df9a01903acc3824a1cd5ec823c124ce4468aa85fe2da7b107f1b3ddee",
+      "bytes": 50000000,
+      "sha256": "6726c86a0fad3f2f16233ed00008c606f6a46141787bb1a7e475f55a983319e7",
+      "source": {
+        "url": "https://huggingface.co/datasets/stanford-cs336/owt-sample/resolve/86886dcee6d92159ca7538222a8c7ff4c79aa336/owt_train.txt.gz",
+        "revision": "86886dcee6d92159ca7538222a8c7ff4c79aa336",
+        "archive_bytes": 4591240837,
+        "archive_sha256": "b19ae88cfbc4016b304c348522455fe38ebac48fffed955adcc7191a89e38ccf",
+        "sampling": "decompressed source prefix with each <|endoftext|> document separator normalized to one newline, stopped at the first UTF-8 boundary at or after 50000000 output bytes",
+        "acquisition": "node benches/tools/acquire_openwebtext_slice.mjs"
+      }
+    },
+    {
       "id": "script-latin",
       "role": "script-stress",
       "label": "Latin long pretoken",

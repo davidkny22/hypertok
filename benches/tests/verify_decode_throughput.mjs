@@ -25,8 +25,8 @@ assert.equal(measured.exact, true);
 assert.equal(measured.containerRegime, "repeated");
 assert.equal(measured.statistics.n, 3);
 assert.equal(measured.tokenCount, ids.length);
-assert.equal(measured.bytesPerSample, workload.bytes);
-assert.equal(measured.iterationsPerSample, 1);
+assert.equal(measured.bytesPerSample, workload.bytes * 3);
+assert.equal(measured.iterationsPerSample, 3);
 
 const mutatedAdapter = Object.freeze({
   ...exactAdapter,
@@ -96,8 +96,10 @@ async function throughputContainers(containerRegime) {
 
 const repeatedThroughputContainers = await throughputContainers("repeated");
 assert.equal(new Set(repeatedThroughputContainers).size, 1);
+assert.ok(repeatedThroughputContainers.every((input) => input instanceof Uint32Array));
 const freshThroughputContainers = await throughputContainers("fresh");
 assert.equal(new Set(freshThroughputContainers).size, freshThroughputContainers.length);
+assert.ok(freshThroughputContainers.every((input) => input instanceof Uint32Array));
 await assert.rejects(
   measureDecodeThroughput(exactAdapter, workload, configuration, "blended"),
   /container regime must be repeated or fresh/,
@@ -167,6 +169,31 @@ assert.throws(
   /containerRegime must be repeated or fresh/,
 );
 
+const subsetIds = Uint32Array.from({ length: 100 }, (_, index) => (index === 0 ? 1 : 0));
+const subsetRuntime = Object.freeze({
+  encodeSync: () => subsetIds,
+  tokenBytes: (id) => id === 1 ? Uint8Array.of(0xff) : Uint8Array.of(0x61),
+  decode: () => "a".repeat(4_096),
+});
+const subsetPricing = measureDecodeRoutes({
+  baseline: subsetRuntime,
+  candidate: subsetRuntime,
+  workloads: [{ id: "candidate-subset", text: "a".repeat(8_192) }],
+  candidateMode: "mixed",
+  targetBytesPerSample: 1,
+  n: 1,
+  warmup: 0,
+  now: routeClock(),
+});
+const subsetRow = subsetPricing.rows[0];
+assert.equal(subsetRow.assemblySegments, 2);
+assert.equal(subsetRow.candidateAssemblySegments, 0);
+assert.equal(subsetRow.candidateAssembly, null);
+assert.equal(subsetRow.candidateMillisecondsPerAssemblySegment, null);
+assert.equal(subsetRow.candidateMinusAssemblyMillisecondsPerSegment, null);
+
 console.log("decode throughput verifier PASS (exact output, statistics, ratios)");
 console.log("decoded-output mutation RED (1/1)");
 console.log("decode container regimes PASS (throughput and route pricing kept separate)");
+console.log("throughput-preserves-hypertok-typed-decode-input PASS");
+console.log("decode-route-pricing-uses-candidate-assembly-subset PASS");

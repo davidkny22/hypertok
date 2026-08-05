@@ -203,7 +203,9 @@ async function loadWorkloads() {
   if (!response.ok) throw new Error(`manifest: HTTP ${response.status}`);
   const manifest = await response.json();
   const workloads = [];
-  for (const entry of manifest.workloads.filter(({ role }) => role === "arena")) {
+  for (const entry of manifest.workloads.filter(
+    ({ role }) => role === "arena" || role === "arena-large",
+  )) {
     const bytes = await fetchBytes(`/corpus/${entry.path}`);
     if (bytes.length !== entry.bytes) throw new Error(`${entry.id}: byte count mismatch`);
     if ((await sha256Hex(bytes)) !== entry.sha256) throw new Error(`${entry.id}: digest mismatch`);

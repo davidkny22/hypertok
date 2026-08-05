@@ -18,6 +18,7 @@ const tests = plan("test");
 assert.equal(tests.command, "test");
 assert.ok(tests.files.includes("tests/verify_public_contracts.mjs"));
 assert.ok(tests.files.includes("tests/verify_agreement_cross_env.mjs"));
+assert.ok(tests.files.includes("tests/verify_verdict_sampling.mjs"));
 
 const smoke = plan("benchmark", "--profile", "arena", "--mode", "smoke");
 assert.equal(smoke.profile, "arena");
@@ -26,13 +27,30 @@ assert.ok(
   smoke.files.indexOf("tests/verify_agreement_cross_env.mjs") <
     smoke.files.indexOf("measure_node_throughput.mjs"),
 );
-for (const file of ["measure_node_load.mjs", "measure_browser_load.mjs"]) {
+for (const file of [
+  "measure_browser_transfer_sizes.mjs",
+  "measure_node_load.mjs",
+  "measure_browser_load.mjs",
+]) {
+  assert.equal(smoke.files.includes(file), false);
+}
+assert.deepEqual(
+  smoke.carriedForwardAxes,
+  ["transfer", "decompression", "materialisation", "memory"],
+);
+for (const file of [
+  "measure_node_throughput.mjs",
+  "measure_browser_throughput.mjs",
+  "measure_node_decode.mjs",
+  "measure_browser_decode.mjs",
+]) {
   assert.ok(smoke.files.includes(file));
 }
 
 const shipping = plan("benchmark", "--profile", "shipping", "--mode", "smoke");
 assert.equal(shipping.profile, "shipping");
 assert.equal(shipping.mode, "smoke");
+assert.deepEqual(shipping.carriedForwardAxes, []);
 for (const file of ["script-measurement/run.mjs", "measure_shim_overhead.mjs"]) {
   assert.ok(shipping.files.includes(file));
 }
@@ -55,7 +73,7 @@ const missingSource = spawnSync(
 assert.notEqual(missingSource.status, 0);
 assert.match(missingSource.stderr, /requires --source-ranks/);
 
-console.log("public runner plan PASS (test and smoke ordering)");
+console.log("public runner plan PASS (agreement first, measured axes active, unchanged axes carried forward)");
 console.log("shipping runner plan PASS (decomposition and shim overhead)");
 console.log("unknown mode mutation RED");
 console.log("missing source-ranks mutation RED");
