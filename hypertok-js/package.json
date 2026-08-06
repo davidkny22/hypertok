@@ -1,6 +1,6 @@
 {
   "name": "hypertok",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "The fastest tokenizer on the web. Exact token ids for any BPE or SentencePiece vocabulary, in browsers and Node.",
   "type": "module",
   "license": "MIT",
@@ -23,6 +23,7 @@
     "src/tier-runtime.mjs",
     "src/tier-worker.mjs",
     "src/tiktoken-shim.mjs",
+    "src/vocab-resolve.mjs",
     "types",
     "wasm",
     "README.md",
@@ -50,7 +51,13 @@
       "types": "./types/huggingface-lazy-shim.d.ts",
       "import": "./src/huggingface-lazy-shim.mjs",
       "default": "./src/huggingface-lazy-shim.mjs"
-    }
+    },
+    "./vocab-resolve": {
+      "types": "./types/vocab-resolve.d.ts",
+      "import": "./src/vocab-resolve.mjs",
+      "default": "./src/vocab-resolve.mjs"
+    },
+    "./wasm/single/hypertok_wasm_core_bg.wasm": "./wasm/single/hypertok_wasm_core_bg.wasm"
   },
   "scripts": {
     "build:package": "powershell -NoProfile -ExecutionPolicy Bypass -File build_package.ps1",

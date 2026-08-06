@@ -225,7 +225,8 @@ export async function fromBytes(input, options = {}) {
     throw new TypeError("load options must be an object");
   }
   const bytes = vocabularyBytes(input);
-  const unthreadedModuleSource = await localWasmSource(singleModuleUrl);
+  const unthreadedModuleSource = options.moduleSource
+    ?? await localWasmSource(singleModuleUrl);
   const runtime = bytes.length > 10 && bytes[10] === 1
     ? await sentencePieceRuntime(bytes, options, unthreadedModuleSource)
     : await createTierRuntime({

@@ -1,0 +1,13 @@
+{
+  "name": "hypertok-divergence-audit",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@dqbd/tiktoken": "1.0.21",
+    "@hypertok/vocab-cl100k": "1.0.0",
+    "@hypertok/vocab-gpt2": "1.0.0",
+    "@hypertok/vocab-o200k": "1.0.0",
+    "@hypertok/vocab-p50k": "1.0.0",
+    "js-tiktoken": "1.0.21"
+  }
+}

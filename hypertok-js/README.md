@@ -67,6 +67,7 @@ flags, index schemes, or behavior are refused explicitly.
 const tokenizer = await fromBytes(bytes, {
   tier: "single" | "worker" | "shared",
   workers: 4,
+  moduleSource,
 });
 
 await tokenizer.encode(text, { reserved });
@@ -90,6 +91,10 @@ The handle also exposes:
 
 `encodeDetailed` returns IDs, original-input UTF-8 byte offsets in `starts`, and the reserved token
 names found in the input. `encodeSync` is available on the single tier and throws on tiers that cannot execute synchronously.
+
+Edge bundlers can statically import
+`hypertok/wasm/single/hypertok_wasm_core_bg.wasm` and pass the resulting bytes or compiled
+`WebAssembly.Module` as `moduleSource`. Supplying it bypasses runtime wasm source discovery.
 
 ## Execution tiers
 
@@ -129,6 +134,18 @@ Each package exports a `vocabulary` URL and immutable metadata including the for
 revision, source digest, emitted-file digest, vocabulary digest, size, and license. Each `.htk`
 file is verified in both directions against its pinned source mapping before it is eligible for a
 package.
+
+Server and edge integrations can share the packaged resolver:
+
+```js
+import { loadVocab } from "hypertok/vocab-resolve";
+
+const bytes = await loadVocab("o200k");
+```
+
+Node resolves and reads the installed `@hypertok/vocab-*` package without a network request. If
+local package access is unavailable, the resolver fetches the pinned package version from
+jsDelivr under a bounded timeout.
 
 ## Compatibility entry points
 

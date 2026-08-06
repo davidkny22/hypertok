@@ -21,6 +21,7 @@ export interface LoadOptions {
   tier?: Tier;
   workers?: number;
   optimizations?: OptimizationOptions;
+  moduleSource?: WebAssembly.Module | BufferSource;
 }
 
 export interface ReservedPolicy {

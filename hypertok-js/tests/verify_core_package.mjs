@@ -58,6 +58,17 @@ const packOutput = run(process.execPath, [
 const packed = JSON.parse(packOutput);
 assert.equal(packed.length, 1);
 const manifest = packed[0];
+const vocabPackOutput = run(process.execPath, [
+  npmCli,
+  "pack",
+  path.join(root, "hypertok-vocab", "o200k"),
+  "--pack-destination",
+  packDirectory,
+  "--json",
+]);
+const vocabPacked = JSON.parse(vocabPackOutput);
+assert.equal(vocabPacked.length, 1);
+const vocabManifest = vocabPacked[0];
 const packedPaths = new Set(manifest.files.map((entry) => entry.path.replaceAll("\\", "/")));
 assert.equal(
   [...packedPaths].filter((entry) => entry.startsWith("tests/") || entry.startsWith("results/")).length,
@@ -70,6 +81,7 @@ writeFileSync(
   `${JSON.stringify({ private: true, type: "module" }, null, 2)}\n`,
 );
 const tarball = path.join(packDirectory, manifest.filename);
+const vocabTarball = path.join(packDirectory, vocabManifest.filename);
 run(
   process.execPath,
   [
@@ -80,6 +92,7 @@ run(
     "--no-fund",
     "--package-lock=false",
     tarball,
+    vocabTarball,
   ],
   { cwd: installDirectory },
 );
@@ -93,9 +106,14 @@ import { fromBytes } from "hypertok";
 import { createTiktokenShim } from "hypertok/tiktoken";
 import { createHuggingFaceShim } from "hypertok/huggingface";
 import { createLazyHuggingFaceShim } from "hypertok/huggingface-lazy";
+import { loadVocab } from "hypertok/vocab-resolve";
 
 const byteBytes = await readFile(process.argv[2]);
-const byteTokenizer = await fromBytes(byteBytes, { tier: "single" });
+assert.deepEqual(await loadVocab("o200k"), byteBytes);
+const wasmBytes = await readFile(
+  new URL(import.meta.resolve("hypertok/wasm/single/hypertok_wasm_core_bg.wasm")),
+);
+const byteTokenizer = await fromBytes(byteBytes, { tier: "single", moduleSource: wasmBytes });
 const byteDetailed = await byteTokenizer.encodeDetailed("hello world");
 assert.equal(byteTokenizer.structuralClass, "byte_bpe");
 assert.equal(byteTokenizer.decode(byteDetailed.ids), "hello world");

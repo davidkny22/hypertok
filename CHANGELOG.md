@@ -2,6 +2,13 @@
 
 All notable public changes are recorded here.
 
+## 0.3.0
+
+- Added caller-supplied WebAssembly module or byte loading for edge bundlers.
+- Added a local-first vocabulary resolver with pinned jsDelivr fallback and bounded timeouts.
+- Exported the single-tier WebAssembly asset for static bundler resolution.
+- Removed non-runtime WebAssembly name and producer metadata from shipped artifacts.
+
 ## 0.2.2
 
 - Added the additive HTK format-v1 cl100k named-pattern identifier and runtime routing.
