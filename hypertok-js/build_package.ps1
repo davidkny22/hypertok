@@ -41,6 +41,12 @@ if (Test-Path -LiteralPath $snippetDestination) {
 }
 Copy-Item -LiteralPath $snippetSource -Destination $snippetDestination -Recurse -Force
 
+$stripScript = Join-Path $PSScriptRoot "tools\strip-wasm-custom-sections.mjs"
+& node $stripScript --in-place `
+    (Join-Path $PSScriptRoot "wasm\single\hypertok_wasm_core_bg.wasm") `
+    (Join-Path $PSScriptRoot "wasm\shared\hypertok_wasm_core_bg.wasm")
+if ($LASTEXITCODE -ne 0) { throw "WebAssembly metadata stripping failed" }
+
 $workerHelpers = @(Get-ChildItem -Recurse -File -Filter workerHelpers.js -LiteralPath $snippetDestination)
 if ($workerHelpers.Count -ne 1) {
     throw "expected exactly one shared worker helper, found $($workerHelpers.Count)"
