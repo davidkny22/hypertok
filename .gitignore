@@ -271,3 +271,4 @@ __marimo__/
 /results/
 /benches/node_modules/
 /hypertok-js/node_modules/
+**/.wrangler/

@@ -1,0 +1,17 @@
+{
+  "name": "hypertok-workerd-regression",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-08-05",
+  "rules": [
+    {
+      "type": "CompiledWasm",
+      "globs": ["**/*.wasm"],
+      "fallthrough": true
+    },
+    {
+      "type": "Data",
+      "globs": ["**/*.htk"],
+      "fallthrough": true
+    }
+  ]
+}

@@ -238,8 +238,9 @@ function flattenIds(parts) {
   return flat;
 }
 
-async function loadSingle(moduleUrl, moduleSource, vocabulary, scheme, format) {
-  const module = await import(/* webpackIgnore: true */ /* @vite-ignore */ moduleUrl);
+async function loadSingle(moduleUrl, moduleSource, vocabulary, scheme, format, bundledModule) {
+  const module = bundledModule
+    ?? await import(/* webpackIgnore: true */ /* @vite-ignore */ moduleUrl);
   await module.default(
     moduleSource === undefined ? undefined : { module_or_path: moduleSource },
   );
@@ -381,6 +382,7 @@ async function encodeWithWorkers(single, pool, input) {
 export async function createTierRuntime(options) {
   const {
     unthreadedModuleUrl,
+    unthreadedModule,
     unthreadedModuleSource,
     threadedModuleUrl,
     vocabulary,
@@ -406,6 +408,7 @@ export async function createTierRuntime(options) {
     vocabulary,
     scheme,
     format,
+    unthreadedModule,
   );
   const decodeConfiguration =
     optimizationConfiguration.decode.assembly && typeof single.decodeAssemblyBytes !== "function"

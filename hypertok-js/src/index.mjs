@@ -2,9 +2,15 @@ import { createTierRuntime } from "./tier-runtime.mjs";
 import { createComposedDecoder } from "./decode-composed.mjs";
 import { resolveOptimizationConfig } from "./optimization-config.mjs";
 import { registerShimRuntime } from "./shim-runtime.mjs";
+import * as singleWasmModule from "../wasm/single/hypertok_wasm_core.js";
 
-const singleModuleUrl = new URL("../wasm/single/hypertok_wasm_core.js", import.meta.url);
-const sharedModuleUrl = new URL("../wasm/shared/hypertok_wasm_core.js", import.meta.url);
+const moduleBaseUrl = typeof import.meta.url === "string" ? import.meta.url : undefined;
+const singleModuleUrl = moduleBaseUrl === undefined
+  ? undefined
+  : new URL("../wasm/single/hypertok_wasm_core.js", import.meta.url);
+const sharedModuleUrl = moduleBaseUrl === undefined
+  ? undefined
+  : new URL("../wasm/shared/hypertok_wasm_core.js", import.meta.url);
 const textEncoder = new TextEncoder();
 
 function vocabularyBytes(input) {
@@ -13,8 +19,11 @@ function vocabularyBytes(input) {
   throw new TypeError("fromBytes input must be a Uint8Array or ArrayBuffer");
 }
 
-async function localWasmSource(moduleUrl) {
-  if (moduleUrl.protocol !== "file:") return undefined;
+async function defaultWasmSource(moduleUrl) {
+  if (moduleUrl === undefined) return undefined;
+  if (moduleUrl.protocol !== "file:") {
+    return new URL("hypertok_wasm_core_bg.wasm", moduleUrl);
+  }
   const moduleName = "node:fs/promises";
   const { readFile } = await import(/* webpackIgnore: true */ /* @vite-ignore */ moduleName);
   return readFile(new URL("hypertok_wasm_core_bg.wasm", moduleUrl));
@@ -69,11 +78,10 @@ async function sentencePieceRuntime(bytes, options, moduleSource) {
   if (options.tier !== undefined && options.tier !== "single") {
     throw new Error(`the ${options.tier} tier is unavailable for sentencepiece vocabularies`);
   }
-  const module = await import(/* webpackIgnore: true */ /* @vite-ignore */ singleModuleUrl.href);
-  await module.default(
+  await singleWasmModule.default(
     moduleSource === undefined ? undefined : { module_or_path: moduleSource },
   );
-  const tokenizer = module.WasmSentencePieceTokenizer.fromHtk(bytes);
+  const tokenizer = singleWasmModule.WasmSentencePieceTokenizer.fromHtk(bytes);
   const decodeConfiguration = resolveOptimizationConfig(options.optimizations).decode;
   // SentencePiece decode must interpret its metaspace marker as text structure. The generic
   // byte-BPE assembly and table paths would emit that marker's bytes instead of exact spaces.
@@ -226,13 +234,14 @@ export async function fromBytes(input, options = {}) {
   }
   const bytes = vocabularyBytes(input);
   const unthreadedModuleSource = options.moduleSource
-    ?? await localWasmSource(singleModuleUrl);
+    ?? await defaultWasmSource(singleModuleUrl);
   const runtime = bytes.length > 10 && bytes[10] === 1
     ? await sentencePieceRuntime(bytes, options, unthreadedModuleSource)
     : await createTierRuntime({
-        unthreadedModuleUrl: singleModuleUrl.href,
+        unthreadedModule: singleWasmModule,
+        unthreadedModuleUrl: singleModuleUrl?.href,
         unthreadedModuleSource,
-        threadedModuleUrl: sharedModuleUrl.href,
+        threadedModuleUrl: sharedModuleUrl?.href,
         vocabulary: bytes,
         format: "htk",
         tier: options.tier,

@@ -2,6 +2,12 @@
 
 All notable public changes are recorded here.
 
+## 0.3.1
+
+- Fixed Cloudflare Workers initialization when the bundled module has no `import.meta.url` and the
+  caller supplies a compiled WebAssembly module.
+- Added real workerd coverage with and without the `nodejs_compat` compatibility flag.
+
 ## 0.3.0
 
 - Added caller-supplied WebAssembly module or byte loading for edge bundlers.
