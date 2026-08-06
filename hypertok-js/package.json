@@ -1,6 +1,6 @@
 {
   "name": "hypertok",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "The fastest tokenizer on the web. Exact token ids for any BPE or SentencePiece vocabulary, in browsers and Node.",
   "type": "module",
   "license": "MIT",
@@ -16,6 +16,7 @@
     "src/decode-table.mjs",
     "src/huggingface-shim.mjs",
     "src/huggingface-lazy-shim.mjs",
+    "src/index-edge.mjs",
     "src/index.mjs",
     "src/optimization-config.mjs",
     "src/shared-controller.mjs",
@@ -34,6 +35,8 @@
   "exports": {
     ".": {
       "types": "./types/index.d.ts",
+      "workerd": "./src/index-edge.mjs",
+      "edge-light": "./src/index-edge.mjs",
       "import": "./src/index.mjs",
       "default": "./src/index.mjs"
     },
@@ -82,7 +85,10 @@
   "devDependencies": {
     "acorn": "^8.18.0",
     "axe-core": "^4.10.3",
+    "next": "16.3.0",
     "playwright-core": "^1.62.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
     "typescript": "5.9.3",
     "vite": "8.2.0",
     "webpack": "5.109.2",

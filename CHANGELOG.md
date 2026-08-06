@@ -2,6 +2,13 @@
 
 All notable public changes are recorded here.
 
+## 0.3.2
+
+- Fixed default WebAssembly loading in Cloudflare Workers and Vercel Edge through package-owned
+  static module imports selected by each runtime's package condition.
+- Added real Wrangler/workerd and Next.js/Turbopack edge regression coverage for bare
+  `fromBytes(bytes)` initialization.
+
 ## 0.3.1
 
 - Fixed Cloudflare Workers initialization when the bundled module has no `import.meta.url` and the

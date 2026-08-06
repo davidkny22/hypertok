@@ -31,6 +31,7 @@
         "execution-artifact-manifest",
         "feature-composition",
         "workerd-edge",
+        "vercel-edge",
         "oracle-parity",
         "simd-parity",
         "reserved-policy",
@@ -193,6 +194,12 @@
       "cwd": "hypertok-js",
       "executable": "node",
       "arguments": ["--test", "tests/workerd-edge.test.mjs"]
+    },
+    {
+      "id": "vercel-edge",
+      "cwd": "hypertok-js",
+      "executable": "node",
+      "arguments": ["--test", "tests/vercel-edge.test.mjs"]
     },
     {
       "id": "reserved-policy",

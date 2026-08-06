@@ -141,11 +141,12 @@ function verifyGraph(packageJson, packedPaths, readSource, parse) {
       specifier = `./${specifier}`;
     }
     if (!specifier.startsWith(".")) return;
-    const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(from), specifier));
+    const artifactSpecifier = specifier.replace(/[?#].*$/, "");
+    const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(from), artifactSpecifier));
     assert.ok(!resolved.startsWith("../") && !path.posix.isAbsolute(resolved), `${from} escapes package root`);
     assert.ok(packedPaths.has(resolved), `${from} resolves missing artifact ${resolved}`);
     assert.ok(!isTestModule(resolved), `${from} resolves test module ${resolved}`);
-    edges.add(`${kind}:${from}->${resolved}`);
+    edges.add(`${kind}:${from}->${specifier}`);
     graphFiles.add(resolved);
     if (/\.(?:mjs|js)$/.test(resolved) && !visitedModules.has(resolved)) queue.push(resolved);
   }
@@ -249,6 +250,13 @@ assert.throws(
       parse,
     ),
   /resolves test module/,
+);
+mutationsRed += 1;
+const missingQueriedAsset = new Set(packedPaths);
+missingQueriedAsset.delete("wasm/single/hypertok_wasm_core_bg.wasm");
+assert.throws(
+  () => verifyGraph(packageJson, missingQueriedAsset, readSource, parse),
+  /resolves missing artifact wasm\/single\/hypertok_wasm_core_bg\.wasm/,
 );
 mutationsRed += 1;
 
