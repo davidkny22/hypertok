@@ -6,6 +6,9 @@ import { Worker as NodeWorker } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
 
 import { fromBytes } from "../src/index.mjs";
+import { createHuggingFaceShim } from "../src/huggingface-shim.mjs";
+import { resolveShimRuntime } from "../src/shim-runtime.mjs";
+import { createTiktokenShim } from "../src/tiktoken-shim.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const bootstrap = new URL("./fixtures/node-worker-bootstrap.mjs", import.meta.url);
@@ -122,6 +125,48 @@ test("public-free-rejects-inflight-worker-and-shared-call", async () => {
     await Promise.resolve();
     tokenizer.free();
     await assert.rejects(() => withTimeout(pending), /execution worker closed/);
+  }
+});
+
+test("registered worker and shared handles expose one resident view only to synchronous shims", async () => {
+  const text = "resident shim lifecycle";
+  for (const tier of ["worker", "shared"]) {
+    const tokenizer = await openTier(tier, gpt2Vocabulary);
+    const expected = Array.from(await tokenizer.encode(text));
+    assert.throws(() => tokenizer.encodeSync(text), new RegExp(`unavailable on the ${tier} tier`));
+    const resident = resolveShimRuntime(tokenizer);
+    assert.equal(resident.tier, "single");
+    assert.equal(resident.lifecycle().singleLoads, 1);
+    assert.equal(resident.lifecycle().residentSingleIdentity, 1);
+
+    const tiktoken = createTiktokenShim(tokenizer, { name: "gpt2" });
+    assert.deepEqual(Array.from(tiktoken.encode_ordinary(text)), expected);
+    assert.equal(new TextDecoder().decode(tiktoken.decode(expected)), text);
+
+    const huggingFace = createHuggingFaceShim(tokenizer, {
+      tokenString(id) {
+        return Number.isInteger(id) && id >= 0 && id < tokenizer.vocabSize ? String(id) : undefined;
+      },
+      postProcess(first, second) {
+        const ids = second === null ? [...first] : [...first, ...second];
+        return { ids, token_type_ids: ids.map(() => 0) };
+      },
+      specialTokens: [],
+      unknownTokenId: 0,
+      cleanUpTokenizationSpaces: false,
+    });
+    const encoded = huggingFace.encode(text, {
+      add_special_tokens: false,
+      return_token_type_ids: false,
+    });
+    assert.deepEqual(encoded.ids, expected);
+    assert.equal(
+      huggingFace.decode(encoded.ids, { clean_up_tokenization_spaces: false }),
+      text,
+    );
+
+    tiktoken.free();
+    await assert.rejects(() => tokenizer.encode("after shim free"), /execution-tier session is closed/);
   }
 });
 

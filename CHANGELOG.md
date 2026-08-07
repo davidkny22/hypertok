@@ -2,6 +2,13 @@
 
 All notable public changes are recorded here.
 
+## 0.3.3
+
+- Fixed tiktoken and Hugging Face shim construction when automatic selection uses a worker or
+  shared tier by binding each trusted public handle to its existing resident single view.
+- Added real Bun coverage for both synchronous shims and registration mutation coverage for the
+  public-to-resident association.
+
 ## 0.3.2
 
 - Fixed default WebAssembly loading in Cloudflare Workers and Vercel Edge through package-owned

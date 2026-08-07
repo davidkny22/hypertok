@@ -1,7 +1,7 @@
 import { createTierRuntime } from "./tier-runtime.mjs";
 import { createComposedDecoder } from "./decode-composed.mjs";
 import { resolveOptimizationConfig } from "./optimization-config.mjs";
-import { registerShimRuntime } from "./shim-runtime.mjs";
+import { registerShimRuntime, resolveShimRuntime } from "./shim-runtime.mjs";
 import * as singleWasmModule from "../wasm/single/hypertok_wasm_core.js";
 
 const moduleBaseUrl = typeof import.meta.url === "string" ? import.meta.url : undefined;
@@ -225,7 +225,7 @@ function publicHandle(runtime, metadata) {
       void runtime.close();
     },
   });
-  return registerShimRuntime(handle, runtime);
+  return registerShimRuntime(handle, resolveShimRuntime(runtime));
 }
 
 export async function fromBytes(input, options = {}) {

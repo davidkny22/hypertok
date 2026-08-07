@@ -269,6 +269,17 @@
       "arguments": ["hypertok-js/tests/verify_shim_fidelity.mjs"]
     },
     {
+      "id": "bun-shim-registration",
+      "invariant": "trusted public worker handles resolve synchronous shims through the resident single view",
+      "featureGraph": "single,worker,shared",
+      "surface": "test-mode",
+      "expected": "pass",
+      "faults": 1,
+      "match": "bun registration mutation RED=2/2",
+      "executable": "node",
+      "arguments": ["--test", "hypertok-js/tests/bun-shims.test.mjs"]
+    },
+    {
       "id": "starts-fidelity",
       "invariant": "token starts remain original-input UTF-8 offsets",
       "featureGraph": "single,worker,shared",

@@ -1,5 +1,6 @@
 import { resolveOptimizationConfig } from "./optimization-config.mjs";
 import { createComposedDecoder } from "./decode-composed.mjs";
+import { registerShimRuntime } from "./shim-runtime.mjs";
 
 const textEncoder = new TextEncoder();
 
@@ -633,6 +634,7 @@ export async function createTierRuntime(options) {
     single.free();
   };
 
+  let residentSingleHandle;
   const makeHandle = (tier) => {
     const decode = decodeConfiguration.leanDispatch
       ? (ids) => {
@@ -718,7 +720,7 @@ export async function createTierRuntime(options) {
         }),
       async switchTier(requested) {
         const nextTier = await ensureTier(requested);
-        return makeHandle(nextTier);
+        return registeredHandle(nextTier);
       },
       close,
     };
@@ -734,6 +736,11 @@ export async function createTierRuntime(options) {
     }
     return Object.freeze(runtime);
   };
+  const registeredHandle = (tier) => {
+    if (tier === "single") return residentSingleHandle;
+    return registerShimRuntime(makeHandle(tier), residentSingleHandle);
+  };
+  residentSingleHandle = makeHandle("single");
 
   let activeTier = initialTier;
   try {
@@ -752,5 +759,5 @@ export async function createTierRuntime(options) {
     });
   }
   lifecycle.targetReuses = 0;
-  return makeHandle(activeTier);
+  return registeredHandle(activeTier);
 }

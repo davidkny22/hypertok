@@ -30,6 +30,7 @@
         "build-execution-artifacts",
         "execution-artifact-manifest",
         "feature-composition",
+        "bun-shims",
         "workerd-edge",
         "vercel-edge",
         "oracle-parity",
@@ -188,6 +189,12 @@
       "cwd": ".",
       "executable": "node",
       "arguments": ["tests/suites/verify_feature_composition.mjs"]
+    },
+    {
+      "id": "bun-shims",
+      "cwd": "hypertok-js",
+      "executable": "node",
+      "arguments": ["--test", "tests/bun-shims.test.mjs"]
     },
     {
       "id": "workerd-edge",
