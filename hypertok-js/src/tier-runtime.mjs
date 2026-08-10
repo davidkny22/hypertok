@@ -425,6 +425,7 @@ export async function createTierRuntime(options) {
           portableLatin1: false,
           fusedValidation: false,
           leanDispatch: false,
+          cleanUnroll: false,
           directScratch: false,
           memo: optimizationConfiguration.decode.memo,
           raw: true,

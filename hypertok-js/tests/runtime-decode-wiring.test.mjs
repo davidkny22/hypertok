@@ -203,6 +203,15 @@ test("explicit direct scratch reaches assembly without changing typed input rout
   await tokenizer.close();
 });
 
+test("explicit clean unroll reaches the packed table", async () => {
+  const tokenizer = await runtime({ decodeMemo: "off", decodeCleanUnroll: "on" });
+  const ids = [0, 1, 0, 1, 0, 1];
+  assert.equal(tokenizer.decode(ids), "abcabcabc");
+  assert.equal(tokenizer.decodeStats().cleanUnroll, true);
+  assert.equal(tokenizer.decodeStats().tableState.cleanUnrollEnabled, true);
+  await tokenizer.close();
+});
+
 test("explicit memo verifies content and preserves a reachable cache-off refuge", async () => {
   module.events.length = 0;
   const tokenizer = await runtime({ decodeMemo: "on" });

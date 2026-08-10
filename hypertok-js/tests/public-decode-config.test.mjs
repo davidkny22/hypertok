@@ -242,6 +242,20 @@ test("public direct scratch routes high-dirty arrays through reusable validated 
   }
 });
 
+test("public clean unroll reaches the packed table", async () => {
+  const { handle, runtime } = await loaded({ decodeMemo: "off", decodeCleanUnroll: "on" });
+  try {
+    const ids = Array.from(handle.encodeSync("hello world hello world"));
+    assert.equal(handle.decode(ids), "hello world hello world");
+    const stats = runtime.decodeStats();
+    assert.equal(stats.cleanUnroll, true);
+    assert.equal(stats.tableState.cleanUnrollEnabled, true);
+    assert.equal(stats.tableState.tableCalls, 1);
+  } finally {
+    handle.free();
+  }
+});
+
 test("public explicit memo verifies repeated container content", async () => {
   const { handle, runtime } = await loaded({ decodeMemo: "on" });
   try {

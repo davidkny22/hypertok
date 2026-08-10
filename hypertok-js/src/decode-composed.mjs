@@ -57,6 +57,7 @@ export function createComposedDecoder(core, options = {}) {
   const usePortableLatin1 = options.portableLatin1 === true;
   const useFusedValidation = options.fusedValidation === true;
   const useLeanDispatch = options.leanDispatch === true;
+  const useCleanUnroll = options.cleanUnroll === true;
   const useDirectScratch = options.directScratch === true;
   const useMemo = options.memo === true;
   const useHotStrings = options.hotStrings === true;
@@ -104,6 +105,7 @@ export function createComposedDecoder(core, options = {}) {
       portableLatin1: usePortableLatin1,
       fusedValidation: useFusedValidation,
       leanDispatch: useLeanDispatch,
+      cleanUnroll: useCleanUnroll,
       directScratch: useDirectScratch,
     });
     active = table;
@@ -133,6 +135,7 @@ export function createComposedDecoder(core, options = {}) {
       portableLatin1: usePortableLatin1,
       fusedValidation: useFusedValidation,
       leanDispatch: useLeanDispatch,
+      cleanUnroll: useCleanUnroll,
       directScratch: useDirectScratch,
       memo: useMemo,
       hotStrings: useHotStrings,

@@ -493,6 +493,33 @@ test("reads each ordinary-array id once on the steady pure-join path", () => {
   assert.equal(elementReads, ids.length);
 });
 
+test("unrolls clean tails with separate appends and exact validation order", () => {
+  const { table } = fixture([encoder.encode("a"), encoder.encode("b")], {
+    seedEntries: 2,
+    cleanUnroll: true,
+  });
+  for (let length = 0; length <= 9; length += 1) {
+    const ids = Array.from({ length }, (_, index) => index & 1);
+    const expected = ids.map((id) => id === 0 ? "a" : "b").join("");
+    assert.equal(table.decode(ids), expected);
+    assert.equal(table.decode(Uint32Array.from(ids)), expected);
+  }
+  const reads = [0, 0, 0, 0];
+  const ids = [0, 0, 0, 0];
+  for (let index = 0; index < ids.length; index += 1) {
+    Object.defineProperty(ids, index, {
+      configurable: true,
+      get() {
+        reads[index] += 1;
+        return index === 2 ? 1.5 : index & 1;
+      },
+    });
+  }
+  assert.throws(() => table.decode(ids), /array of u32/);
+  assert.deepEqual(reads, [2, 2, 2, 0]);
+  assert.equal(table.stats().cleanUnrollEnabled, true);
+});
+
 test("lean dispatch preserves exact hot-path validation and route counters", () => {
   const { table } = fixture([encoder.encode("a"), encoder.encode("b")], {
     seedEntries: 2,
@@ -536,6 +563,7 @@ test("validates options, inputs, and the core seam", () => {
   );
   assert.throws(() => createDecodeTable(core, { fusedValidation: "on" }), /must be a boolean/);
   assert.throws(() => createDecodeTable(core, { leanDispatch: "on" }), /must be a boolean/);
+  assert.throws(() => createDecodeTable(core, { cleanUnroll: "on" }), /must be a boolean/);
   assert.throws(() => createDecodeTable(core, { directScratch: "on" }), /must be a boolean/);
   assert.throws(
     () => createDecodeTable(core, { directScratch: true }),

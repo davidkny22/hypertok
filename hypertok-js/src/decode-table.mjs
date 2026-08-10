@@ -343,6 +343,10 @@ export function createDecodeTable(core, options = {}) {
   if (typeof useLeanDispatch !== "boolean") {
     throw new TypeError("leanDispatch must be a boolean");
   }
+  const useCleanUnroll = options.cleanUnroll ?? false;
+  if (typeof useCleanUnroll !== "boolean") {
+    throw new TypeError("cleanUnroll must be a boolean");
+  }
   const validateTokenId = useLeanDispatch ? validTokenIdFast : validTokenId;
   const useDirectScratch = options.directScratch ?? false;
   if (typeof useDirectScratch !== "boolean") {
@@ -470,14 +474,57 @@ export function createDecodeTable(core, options = {}) {
   function joinKnownClean(ids) {
     const packed = table;
     let output = "";
+    let index = 0;
     if (ids instanceof Uint32Array) {
-      for (let index = 0; index < ids.length; index += 1) {
+      if (useCleanUnroll) {
+        const unrolledLength = ids.length - (ids.length % 4);
+        for (; index < unrolledLength; index += 4) {
+          let value = packed[ids[index]];
+          if (typeof value !== "string") return index;
+          output += value;
+          value = packed[ids[index + 1]];
+          if (typeof value !== "string") return index + 1;
+          output += value;
+          value = packed[ids[index + 2]];
+          if (typeof value !== "string") return index + 2;
+          output += value;
+          value = packed[ids[index + 3]];
+          if (typeof value !== "string") return index + 3;
+          output += value;
+        }
+      }
+      for (; index < ids.length; index += 1) {
         const value = packed[ids[index]];
         if (typeof value !== "string") return index;
         output += value;
       }
     } else {
-      for (let index = 0; index < ids.length; index += 1) {
+      if (useCleanUnroll) {
+        const unrolledLength = ids.length - (ids.length % 4);
+        for (; index < unrolledLength; index += 4) {
+          let id = ids[index];
+          if (!validateTokenId(id)) return index;
+          let value = packed[id];
+          if (typeof value !== "string") return index;
+          output += value;
+          id = ids[index + 1];
+          if (!validateTokenId(id)) return index + 1;
+          value = packed[id];
+          if (typeof value !== "string") return index + 1;
+          output += value;
+          id = ids[index + 2];
+          if (!validateTokenId(id)) return index + 2;
+          value = packed[id];
+          if (typeof value !== "string") return index + 2;
+          output += value;
+          id = ids[index + 3];
+          if (!validateTokenId(id)) return index + 3;
+          value = packed[id];
+          if (typeof value !== "string") return index + 3;
+          output += value;
+        }
+      }
+      for (; index < ids.length; index += 1) {
         const id = ids[index];
         if (!validateTokenId(id)) return index;
         const value = packed[id];
@@ -696,6 +743,7 @@ export function createDecodeTable(core, options = {}) {
       portableLatin1State: usePortableLatin1 ? latin1?.stats() ?? null : null,
       fusedValidationEnabled: useFusedValidation,
       leanDispatchEnabled: useLeanDispatch,
+      cleanUnrollEnabled: useCleanUnroll,
       directScratchEnabled: useDirectScratch,
       directScratchCalls,
       directScratchState: directScratch?.stats() ?? null,

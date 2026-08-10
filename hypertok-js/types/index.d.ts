@@ -14,6 +14,7 @@ export interface OptimizationOptions {
   decodeLatin1Portable?: CandidateOptimizationState;
   decodeFusedValidation?: CandidateOptimizationState;
   decodeLeanDispatch?: CandidateOptimizationState;
+  decodeCleanUnroll?: CandidateOptimizationState;
   decodeDirectScratch?: CandidateOptimizationState;
   decodeMemo?: CandidateOptimizationState;
 }
