@@ -187,7 +187,8 @@ The full results, including decode, load, and resident memory, can be found here
 <!-- container-arena:start -->
 The published run covers 546 measured rows at tag `bench-2026-08-04`, across two vocabularies, in Node
 and isolated Chrome. hypertok wins every measured encode comparison. On decode, it wins 239 of
-256, and all 17 losses sit in the fresh-container regime, listed row by row in BENCHMARKS.md.
+256; 15 of the 17 losses sit in the fresh-container regime and 2 in the repeated regime, listed
+row by row in BENCHMARKS.md.
 <!-- container-arena:end -->
 
 ## What it costs
@@ -196,8 +197,8 @@ and isolated Chrome. hypertok wins every measured encode comparison. On decode, 
 
 We cannot claim hypertok is pareto optimal yet. The engine keeps its tables resident.
 For GPT-2, gpt-tokenizer holds only 3.1 MB, where hypertok holds 20.2 MB. (That said,
-over the wire it's only about 0.27 MB gzipped with the GPT-2 vocabulary included,
-sitting beside the leanest pure-JS bundles.) Constructing the tokenizer from its vocabulary bytes takes about 114 ms the first time.
+over the wire the engine is about 0.25 MB under Brotli, 0.41 MB gzipped; the GPT-2
+vocabulary adds 0.17 MB more under Brotli, 0.20 MB gzipped.) Constructing the tokenizer from its vocabulary bytes takes about 114 ms the first time.
 If you tokenize one short prompt per page load and never again, a small pure-JS
 library serves you fine. hypertok is built for the paths where tokenization is
 traffic: gateways, RAG chunking, editors, anything counting tokens all day. But we
