@@ -59,6 +59,10 @@ jobs:
             hypertok-js/package-lock.json
             benches/package-lock.json
 
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: "2.9.5"
+
       - name: Install Python oracle dependency
         run: pip install tokenizers tiktoken sentencepiece
 

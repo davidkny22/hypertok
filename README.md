@@ -61,6 +61,9 @@ tokenizer.free();
 image (hypertok's vocabulary format) before constructing a tokenizer. Unknown format versions, structural classes, sections,
 flags, index schemes, or behavior are refused explicitly.
 
+The release gate exercises this public path in Node, Chromium, Deno, Bun, Cloudflare Workers, and
+Vercel Edge.
+
 ## Core API
 
 ```ts

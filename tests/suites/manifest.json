@@ -31,6 +31,7 @@
         "execution-artifact-manifest",
         "feature-composition",
         "bun-shims",
+        "deno-cli",
         "workerd-edge",
         "vercel-edge",
         "oracle-parity",
@@ -195,6 +196,12 @@
       "cwd": "hypertok-js",
       "executable": "node",
       "arguments": ["--test", "tests/bun-shims.test.mjs"]
+    },
+    {
+      "id": "deno-cli",
+      "cwd": ".",
+      "executable": "deno",
+      "arguments": ["run", "--no-lock", "--allow-read", "hypertok-js/tests/deno/smoke.mjs"]
     },
     {
       "id": "workerd-edge",
