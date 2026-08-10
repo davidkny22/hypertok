@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { createVocabLoader, VOCAB_VERSIONS } from "../src/vocab-resolve.mjs";
+import {
+  createVocabLoader,
+  VocabIntegrityError,
+  VOCAB_VERSIONS,
+} from "../src/vocab-resolve.mjs";
+
+const p50kEdit = new Uint8Array(
+  await readFile(new URL("../../hypertok-vocab/p50k/p50k-edit.htk", import.meta.url)),
+);
 
 test("reads an installed vocabulary without fetching", async () => {
   const calls = [];
@@ -29,20 +38,45 @@ test("falls back to the pinned jsDelivr asset when local reading is unavailable"
       return {
         ok: true,
         async arrayBuffer() {
-          return Uint8Array.of(4, 5, 6).buffer;
+          return p50kEdit.buffer.slice(p50kEdit.byteOffset, p50kEdit.byteOffset + p50kEdit.byteLength);
         },
       };
     },
   });
   assert.deepEqual(
     await load("@hypertok/vocab-p50k", { file: "p50k-edit.htk" }),
-    Uint8Array.of(4, 5, 6),
+    p50kEdit,
   );
   assert.equal(
     requested.url,
     `https://cdn.jsdelivr.net/npm/@hypertok/vocab-p50k@${VOCAB_VERSIONS.p50k}/p50k-edit.htk`,
   );
   assert.equal(requested.signal.aborted, false);
+});
+
+test("refuses fetched vocabulary bytes that do not match package metadata", async () => {
+  const tampered = new Uint8Array(p50kEdit);
+  tampered[tampered.length - 1] ^= 1;
+  const load = createVocabLoader({
+    async readLocal() {
+      throw new Error("filesystem unavailable");
+    },
+    async fetch() {
+      return { ok: true, arrayBuffer: async () => tampered.buffer };
+    },
+  });
+  await assert.rejects(
+    () => load("p50k", { file: "p50k-edit.htk" }),
+    (error) => {
+      assert(error instanceof VocabIntegrityError);
+      assert.equal(error.code, "ERR_HYPERTOK_VOCAB_INTEGRITY");
+      assert.equal(error.packageName, "@hypertok/vocab-p50k");
+      assert.equal(error.file, "p50k-edit.htk");
+      assert.equal(error.expected, "ec4fc02da668992fdd11cd304a6cb1c7631e29c3d8de978c2b65a13eb5e3a2da");
+      assert.notEqual(error.actual, error.expected);
+      return true;
+    },
+  );
 });
 
 test("rejects a hung fetch at the bounded timeout and aborts it", async () => {

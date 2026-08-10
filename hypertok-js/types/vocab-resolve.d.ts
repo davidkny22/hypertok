@@ -1,5 +1,14 @@
 export const VOCAB_VERSIONS: Readonly<Record<string, string>>;
 
+export class VocabIntegrityError extends Error {
+  readonly name: "VocabIntegrityError";
+  readonly code: "ERR_HYPERTOK_VOCAB_INTEGRITY";
+  readonly packageName: string;
+  readonly file: string;
+  readonly expected: string;
+  readonly actual: string;
+}
+
 export interface VocabLoadOptions {
   file?: string;
   timeoutMs?: number;

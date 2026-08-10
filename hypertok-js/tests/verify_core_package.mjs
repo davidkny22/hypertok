@@ -106,10 +106,33 @@ import { fromBytes } from "hypertok";
 import { createTiktokenShim } from "hypertok/tiktoken";
 import { createHuggingFaceShim } from "hypertok/huggingface";
 import { createLazyHuggingFaceShim } from "hypertok/huggingface-lazy";
-import { loadVocab } from "hypertok/vocab-resolve";
+import { createVocabLoader, loadVocab, VocabIntegrityError } from "hypertok/vocab-resolve";
 
 const byteBytes = await readFile(process.argv[2]);
 assert.deepEqual(await loadVocab("o200k"), byteBytes);
+const expectedVocabBytes = new Uint8Array(byteBytes);
+const fallback = createVocabLoader({
+  readLocal: async () => { throw new Error("filesystem unavailable"); },
+  fetch: async () => ({
+    ok: true,
+    arrayBuffer: async () => byteBytes.buffer.slice(
+      byteBytes.byteOffset,
+      byteBytes.byteOffset + byteBytes.byteLength,
+    ),
+  }),
+});
+assert.deepEqual(await fallback("o200k"), expectedVocabBytes);
+const tamperedVocabBytes = new Uint8Array(byteBytes);
+tamperedVocabBytes[tamperedVocabBytes.length - 1] ^= 1;
+const tamperedFallback = createVocabLoader({
+  readLocal: async () => { throw new Error("filesystem unavailable"); },
+  fetch: async () => ({ ok: true, arrayBuffer: async () => tamperedVocabBytes.buffer }),
+});
+await assert.rejects(
+  () => tamperedFallback("o200k"),
+  (error) => error instanceof VocabIntegrityError
+    && error.code === "ERR_HYPERTOK_VOCAB_INTEGRITY",
+);
 const wasmBytes = await readFile(
   new URL(import.meta.resolve("hypertok/wasm/single/hypertok_wasm_core_bg.wasm")),
 );

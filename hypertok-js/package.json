@@ -24,6 +24,7 @@
     "src/tier-runtime.mjs",
     "src/tier-worker.mjs",
     "src/tiktoken-shim.mjs",
+    "src/vocab-integrity.mjs",
     "src/vocab-resolve.mjs",
     "types",
     "wasm",

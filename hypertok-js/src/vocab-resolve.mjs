@@ -1,4 +1,8 @@
+import { verifyVocabBytes, VocabIntegrityError } from "./vocab-integrity.mjs";
+
 const DEFAULT_TIMEOUT_MS = 5_000;
+
+export { VocabIntegrityError };
 
 export const VOCAB_VERSIONS = Object.freeze({
   "cl100k": "1.0.0",
@@ -83,6 +87,11 @@ async function fetchWithTimeout(fetcher, url, timeoutMs) {
   }
 }
 
+async function verifiedFetchedVocab(fetcher, url, timeoutMs, packageName, suffix, file) {
+  const bytes = await fetchWithTimeout(fetcher, url, timeoutMs);
+  return verifyVocabBytes(bytes, packageName, suffix, file);
+}
+
 export function createVocabLoader({
   readLocal = readInstalledVocab,
   fetch = defaultFetch,
@@ -105,7 +114,7 @@ export function createVocabLoader({
     } catch {
       const version = VOCAB_VERSIONS[suffix];
       const url = `https://cdn.jsdelivr.net/npm/${packageName}@${version}/${file}`;
-      return fetchWithTimeout(fetch, url, timeoutMs);
+      return verifiedFetchedVocab(fetch, url, timeoutMs, packageName, suffix, file);
     }
   };
 }
