@@ -42,7 +42,7 @@ const outputPath = path.join(
       : "route-pricing.json",
 );
 const artifacts = vocabularyRegistry.map(({ id }) => prepareVocabularyArtifact(id));
-const decisionWorkloads = candidateMode === "direct-scratch"
+const decisionWorkloads = candidateMode === "direct-scratch" || candidateMode === "latin1-native"
   ? new Set(["chinese", "emoji-heavy"])
   : candidateMode === "clean-unroll"
     ? new Set(["english-prose", "source-code", "long-document", "standard-text"])
@@ -52,9 +52,10 @@ const workloads = loadCorpus().filter(({ id }) =>
 );
 const regimes = candidateMode === "memo"
   ? ["repeated", "fresh"]
-  : candidateMode === "direct-scratch" || candidateMode === "clean-unroll"
+  : candidateMode === "direct-scratch" || candidateMode === "clean-unroll" || candidateMode === "latin1-native"
     ? ["fresh"]
     : ["repeated"];
+const targetBytesPerSample = candidateMode === "latin1-native" ? 16_777_216 : 1_048_576;
 
 async function measureNode(containerRegime, artifact) {
   const baseline = await fromBytes(artifact.bytes, {
@@ -92,7 +93,10 @@ async function measureNode(containerRegime, artifact) {
               : candidateMode === "run-cache"
                 ? { decodeMemo: "off", decodeRunCache: "on" }
                 : candidateMode === "latin1-native"
-                  ? { decodeMemo: "off", decodeLatin1Native: "on" }
+                  ? {
+                      decodeMemo: "off",
+                      decodeLatin1Native: artifact.vocabulary === "o200k_base" ? "on" : "off",
+                    }
                 : candidateMode === "latin1-portable"
                   ? { decodeMemo: "off", decodeLatin1Portable: "on" }
                   : candidateMode === "direct-scratch"
@@ -108,6 +112,7 @@ async function measureNode(containerRegime, artifact) {
       workloads,
       candidateMode,
       containerRegime,
+      targetBytesPerSample,
       baselineStats: () => resolveShimRuntime(baseline).decodeStats(),
       candidateStats: () => resolveShimRuntime(candidate).decodeStats(),
     });
@@ -140,12 +145,13 @@ try {
     const vocabularyRegimes = {};
     for (const regime of regimes) {
       vocabularyRegimes[regime] = await page.evaluate(
-        ({ mode, containerRegime, vocabulary, workloadIds }) =>
+        ({ mode, containerRegime, vocabulary, workloadIds, sampleBytes }) =>
           globalThis.harness.runDecodeRoutePricing({
             candidateMode: mode,
             containerRegime,
             vocabulary,
             workloadIds,
+            targetBytesPerSample: sampleBytes,
             n: 21,
             warmup: 2,
           }),
@@ -154,6 +160,7 @@ try {
           containerRegime: regime,
           vocabulary: artifact.vocabulary,
           workloadIds: workloads.map(({ id }) => id),
+          sampleBytes: targetBytesPerSample,
         },
       );
     }

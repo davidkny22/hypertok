@@ -34,10 +34,28 @@ test("round-trips every byte through one native Latin-1 unmap", () => {
     buildMilliseconds: 0,
     decoderCalls: 1,
     bytesConverted: 256,
+    nativeScratchBytes: 0,
+    nativeScratchGrows: 0,
+    nativeScratchWrites: 0,
     portableDecoderCalls: 0,
     portableBytesConverted: 0,
     portableScratchBytes: 0,
   });
+});
+
+test("reuses the default native output scratch", () => {
+  const entries = [Uint8Array.of(0x61), Uint8Array.of(0xe2), Uint8Array.of(0x82, 0xac)];
+  const decoder = createNativeLatin1Decoder(fixture(entries));
+  assert.equal(decoder.decode([0, 1, 2]), "a\u20ac");
+  const first = decoder.stats();
+  assert.equal(first.nativeScratchBytes, 256);
+  assert.equal(first.nativeScratchGrows, 1);
+  assert.equal(first.nativeScratchWrites, 1);
+  assert.equal(decoder.decode([0, 0, 0]), "aaa");
+  const second = decoder.stats();
+  assert.equal(second.nativeScratchBytes, first.nativeScratchBytes);
+  assert.equal(second.nativeScratchGrows, first.nativeScratchGrows);
+  assert.equal(second.nativeScratchWrites, 2);
 });
 
 test("preserves NUL, BOM, malformed UTF-8, and container refusal", () => {

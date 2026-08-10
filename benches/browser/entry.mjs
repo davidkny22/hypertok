@@ -321,6 +321,7 @@ export async function runDecodeRoutePricing({
   containerRegime = "repeated",
   vocabulary = "gpt2",
   workloadIds,
+  targetBytesPerSample = 1_048_576,
   n = 21,
   warmup = 2,
 } = {}) {
@@ -366,7 +367,10 @@ export async function runDecodeRoutePricing({
             : candidateMode === "run-cache"
               ? { decodeMemo: "off", decodeRunCache: "on" }
               : candidateMode === "latin1-native"
-                ? { decodeMemo: "off", decodeLatin1Native: "on" }
+                ? {
+                    decodeMemo: "off",
+                    decodeLatin1Native: vocabulary === "o200k_base" ? "on" : "off",
+                  }
                 : candidateMode === "latin1-portable"
                   ? { decodeMemo: "off", decodeLatin1Portable: "on" }
                   : candidateMode === "direct-scratch"
@@ -382,6 +386,7 @@ export async function runDecodeRoutePricing({
       workloads: selectedWorkloads,
       candidateMode,
       containerRegime,
+      targetBytesPerSample,
       n,
       warmup,
       baselineStats: () => resolveShimRuntime(baseline).decodeStats(),

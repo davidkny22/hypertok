@@ -23,9 +23,10 @@ function byteString(bytes) {
   return output;
 }
 
-function defaultNativeUnmap(value) {
-  const buffer = globalThis.Buffer;
-  return typeof buffer?.from === "function" ? buffer.from(value, "latin1") : null;
+function nextCapacity(length) {
+  let capacity = 256;
+  while (capacity < length) capacity *= 2;
+  return capacity;
 }
 
 export function createNativeLatin1Decoder(core, options = {}) {
@@ -38,15 +39,35 @@ export function createNativeLatin1Decoder(core, options = {}) {
   const size = vocabSize(core);
   const now = options.now ?? (() => performance.now());
   if (typeof now !== "function") throw new TypeError("now must be a function");
+  let nativeScratch = null;
+  let nativeScratchGrows = 0;
+  let nativeScratchWrites = 0;
+  const nativeBuffer = options.nativeUnmap === undefined ? globalThis.Buffer : null;
   const nativeUnmap = options.nativeUnmap === undefined
-    ? defaultNativeUnmap
+    ? typeof nativeBuffer?.allocUnsafe === "function" &&
+        typeof nativeBuffer?.prototype?.write === "function"
+      ? (value) => {
+          if (nativeScratch === null || nativeScratch.length < value.length) {
+            nativeScratch = nativeBuffer.allocUnsafe(nextCapacity(value.length));
+            nativeScratchGrows += 1;
+          }
+          const written = nativeScratch.write(value, 0, value.length, "latin1");
+          if (written !== value.length) {
+            throw new Error("native Latin-1 scratch did not consume the complete string");
+          }
+          nativeScratchWrites += 1;
+          return nativeScratch.subarray(0, value.length);
+        }
+      : null
     : options.nativeUnmap;
   if (nativeUnmap !== null && typeof nativeUnmap !== "function") {
     throw new TypeError("nativeUnmap must be a function or null");
   }
   const portable = options.portable ?? false;
   if (typeof portable !== "boolean") throw new TypeError("portable must be a boolean");
-  const available = nativeUnmap !== null && nativeUnmap("") !== null;
+  const available = options.nativeUnmap === undefined
+    ? nativeUnmap !== null
+    : nativeUnmap !== null && nativeUnmap("") !== null;
   const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
   const strings = new Array(size);
   const present = new Uint8Array(size);
@@ -135,6 +156,9 @@ export function createNativeLatin1Decoder(core, options = {}) {
       buildMilliseconds,
       decoderCalls,
       bytesConverted,
+      nativeScratchBytes: nativeScratch?.byteLength ?? 0,
+      nativeScratchGrows,
+      nativeScratchWrites,
       portableDecoderCalls,
       portableBytesConverted,
       portableScratchBytes: portableScratch.byteLength,
