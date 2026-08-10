@@ -416,6 +416,7 @@ export async function createTierRuntime(options) {
       ? Object.freeze({
           assembly: false,
           boundary: false,
+          borrowedOutput: false,
           hotStrings: false,
           table: false,
           byteTable: false,

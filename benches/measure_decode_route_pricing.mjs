@@ -14,7 +14,7 @@ const benchesDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryDirectory = path.resolve(benchesDirectory, "..");
 const candidateArgument = process.argv.find((argument) => argument.startsWith("--candidate="));
 const candidateMode = candidateArgument?.slice("--candidate=".length) ?? "byte";
-if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable", "direct-scratch", "clean-unroll"]).has(candidateMode)) {
+if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable", "direct-scratch", "clean-unroll", "borrowed-output"]).has(candidateMode)) {
   throw new TypeError("candidate is not supported by decode route pricing");
 }
 const outputPath = path.join(
@@ -39,10 +39,12 @@ const outputPath = path.join(
                 ? "direct-scratch-pricing.json"
                 : candidateMode === "clean-unroll"
                   ? "clean-unroll-pricing.json"
+                  : candidateMode === "borrowed-output"
+                    ? "borrowed-output-pricing.json"
       : "route-pricing.json",
 );
 const artifacts = vocabularyRegistry.map(({ id }) => prepareVocabularyArtifact(id));
-const decisionWorkloads = candidateMode === "direct-scratch" || candidateMode === "latin1-native"
+const decisionWorkloads = candidateMode === "direct-scratch" || candidateMode === "latin1-native" || candidateMode === "borrowed-output"
   ? new Set(["chinese", "emoji-heavy"])
   : candidateMode === "clean-unroll"
     ? new Set(["english-prose", "source-code", "long-document", "standard-text"])
@@ -52,10 +54,12 @@ const workloads = loadCorpus().filter(({ id }) =>
 );
 const regimes = candidateMode === "memo"
   ? ["repeated", "fresh"]
-  : candidateMode === "direct-scratch" || candidateMode === "clean-unroll" || candidateMode === "latin1-native"
+  : candidateMode === "direct-scratch" || candidateMode === "clean-unroll" || candidateMode === "latin1-native" || candidateMode === "borrowed-output"
     ? ["fresh"]
     : ["repeated"];
-const targetBytesPerSample = candidateMode === "latin1-native" ? 16_777_216 : 1_048_576;
+const targetBytesPerSample = candidateMode === "latin1-native" || candidateMode === "borrowed-output"
+  ? 16_777_216
+  : 1_048_576;
 
 async function measureNode(containerRegime, artifact) {
   const baseline = await fromBytes(artifact.bytes, {
@@ -77,6 +81,8 @@ async function measureNode(containerRegime, artifact) {
                   ? { decodeMemo: "off", decodeDirectScratch: "off" }
                   : candidateMode === "clean-unroll"
                     ? { decodeMemo: "off", decodeCleanUnroll: "off" }
+                    : candidateMode === "borrowed-output"
+                      ? { decodeMemo: "off", decodeBorrowedOutput: "off" }
             : { decodeMixedRuns: "off" },
   });
   const candidate = await fromBytes(artifact.bytes, {
@@ -103,6 +109,8 @@ async function measureNode(containerRegime, artifact) {
                     ? { decodeMemo: "off", decodeDirectScratch: "on" }
                     : candidateMode === "clean-unroll"
                       ? { decodeMemo: "off", decodeCleanUnroll: "on" }
+                      : candidateMode === "borrowed-output"
+                        ? { decodeMemo: "off", decodeBorrowedOutput: "on" }
               : { decodeByteTable: "on" },
   });
   try {

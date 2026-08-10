@@ -5,8 +5,12 @@ import path from "node:path";
 import { resolveOptimizationConfig } from "../../hypertok-js/src/optimization-config.mjs";
 
 export const shippingFeatures = resolveOptimizationConfig().artifactFeatures;
+const singleOnlyShippingFeatures = new Set([
+  "opt-decode-assembly",
+  "opt-decode-borrowed-output",
+]);
 const sharedShippingFeatures = shippingFeatures.filter(
-  (feature) => feature !== "opt-decode-assembly",
+  (feature) => !singleOnlyShippingFeatures.has(feature),
 );
 
 export function validateExecutionArtifactManifest(

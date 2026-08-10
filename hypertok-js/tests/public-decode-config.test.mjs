@@ -226,6 +226,26 @@ test("public explicit lean dispatch preserves decode stats and free semantics", 
   assert.throws(() => handle.decode(ids), /execution-tier session is closed/);
 });
 
+test("public borrowed output decodes the packaged wasm view synchronously", async () => {
+  const { handle, runtime } = await loaded({ decodeMemo: "off", decodeBorrowedOutput: "on" });
+  try {
+    const fixture = dirtyFixture(handle);
+    assert.equal(handle.decode(fixture.ids), fixture.text);
+    const expandedIds = Array.from(
+      { length: fixture.ids.length * 64 },
+      (_, index) => fixture.ids[index % fixture.ids.length],
+    );
+    assert.equal(handle.decode(expandedIds), fixture.text.repeat(64));
+    assert.equal(handle.decode(fixture.ids), fixture.text);
+    const stats = runtime.decodeStats();
+    assert.equal(stats.borrowedOutput, true);
+    assert.ok(stats.assembly.borrowedViewCalls >= 3);
+    assert.equal(typeof handle.decode(fixture.ids), "string");
+  } finally {
+    handle.free();
+  }
+});
+
 test("public direct scratch routes high-dirty arrays through reusable validated IDs", async () => {
   const { handle, runtime } = await loaded({ decodeMemo: "off", decodeDirectScratch: "on" });
   try {

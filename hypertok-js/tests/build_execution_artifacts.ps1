@@ -33,7 +33,10 @@ $shippingOptimizations = @(
     "opt-fused-pair-ranks"
     "opt-compact-ranks"
 )
-$shippingSingleOptimizations = @($shippingOptimizations) + "opt-decode-assembly"
+$shippingSingleOptimizations = @($shippingOptimizations) + @(
+    "opt-decode-assembly"
+    "opt-decode-borrowed-output"
+)
 $shippingSingleFeatures = (@(
     "portable-json"
     "wasm-binding"

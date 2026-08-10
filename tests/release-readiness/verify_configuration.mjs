@@ -15,6 +15,7 @@ const automatic = resolveOptimizationConfig();
 assert.deepEqual(automatic.decode, {
   assembly: true,
   boundary: false,
+  borrowedOutput: false,
   hotStrings: false,
   table: true,
   byteTable: false,
@@ -82,6 +83,7 @@ const tableOff = resolveOptimizationConfig({ decodeTable: "off" });
 assert.deepEqual(tableOff.decode, {
   assembly: true,
   boundary: false,
+  borrowedOutput: false,
   hotStrings: false,
   table: false,
   byteTable: false,
@@ -100,6 +102,7 @@ const assemblyOff = resolveOptimizationConfig({ decodeAssembly: "off" });
 assert.deepEqual(assemblyOff.decode, {
   assembly: false,
   boundary: false,
+  borrowedOutput: false,
   hotStrings: false,
   table: false,
   byteTable: false,
@@ -122,6 +125,13 @@ assert.deepEqual(byteTableOn.overrides, [
   { path: "hypertok.optimizations.decodeByteTable", value: "on" },
 ]);
 assert.throws(() => resolveOptimizationConfig({ decodeAssembly: "on" }), /auto or off/);
+
+const borrowedOutputOn = resolveOptimizationConfig({ decodeBorrowedOutput: "on" });
+assert.equal(borrowedOutputOn.states.decodeBorrowedOutput, "on");
+assert.equal(borrowedOutputOn.decode.borrowedOutput, true);
+assert.deepEqual(borrowedOutputOn.overrides, [
+  { path: "hypertok.optimizations.decodeBorrowedOutput", value: "on" },
+]);
 
 const mixedRunsOn = resolveOptimizationConfig({ decodeMixedRuns: "on" });
 assert.equal(mixedRunsOn.states.decodeMixedRuns, "on");

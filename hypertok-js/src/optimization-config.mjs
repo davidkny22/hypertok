@@ -17,6 +17,7 @@ const buildDefinitions = Object.freeze([
 const runtimeDefinitions = Object.freeze([
   Object.freeze(["decodeAssembly", true, "auto"]),
   Object.freeze(["decodeBoundary", false, "auto"]),
+  Object.freeze(["decodeBorrowedOutput", false, "off"]),
   Object.freeze(["decodeHotStrings", false, "auto"]),
   Object.freeze(["decodeTable", true, "auto"]),
   Object.freeze(["decodeByteTable", false, "off"]),
@@ -50,6 +51,7 @@ const buildFeatures = Object.freeze([
     .filter(([key]) => selectedBuildOptimizations.includes(key))
     .map(([, feature]) => feature),
   "opt-decode-assembly",
+  "opt-decode-borrowed-output",
 ]);
 
 function configurationObject(value) {
@@ -78,6 +80,7 @@ export function resolveOptimizationConfig(value) {
     const state = provided ? configuration[key] : defaultState;
     const candidate =
       key === "decodeByteTable" ||
+      key === "decodeBorrowedOutput" ||
       key === "decodeMixedRuns" ||
       key === "decodeRunCache" ||
       key === "decodeLatin1Native" ||
@@ -111,6 +114,9 @@ export function resolveOptimizationConfig(value) {
   const decode = Object.freeze({
     assembly,
     boundary: assembly && admitted("decodeBoundary"),
+    borrowedOutput:
+      assembly &&
+      (states.decodeBorrowedOutput === "on" || admitted("decodeBorrowedOutput")),
     hotStrings: assembly && admitted("decodeHotStrings"),
     table: assembly && admitted("decodeTable"),
     byteTable: byteTable && admitted("decodeTable"),

@@ -10,6 +10,8 @@ pub(crate) mod profiling;
 pub(crate) mod token;
 #[cfg(feature = "wasm-binding")]
 pub mod wasm;
+#[cfg(feature = "opt-decode-borrowed-output")]
+pub(crate) mod wasm_borrowed_output;
 #[cfg(feature = "opt-decode-boundary")]
 pub(crate) mod wasm_resident_ids;
 #[cfg(feature = "opt-marshalling")]

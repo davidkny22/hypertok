@@ -1,4 +1,5 @@
 import { createAssemblyDecoder } from "./decode-assembly.mjs";
+import { createBorrowedAssemblyDecoder } from "./decode-borrowed.mjs";
 import { createBoundaryDecoder } from "./decode-boundary.mjs";
 import { createHotStringDecoder } from "./decode-hotstrings.mjs";
 import { createDecodeMemo } from "./decode-memo.mjs";
@@ -49,6 +50,7 @@ export function createComposedDecoder(core, options = {}) {
   }
   const useAssembly = options.assembly !== false;
   const useBoundary = options.boundary === true;
+  const useBorrowedOutput = options.borrowedOutput === true;
   const useTable = options.table === true;
   const useByteTable = options.byteTable === true;
   const useMixedRuns = options.mixedRuns === true;
@@ -63,6 +65,9 @@ export function createComposedDecoder(core, options = {}) {
   const useHotStrings = options.hotStrings === true;
   if (useBoundary && !useAssembly) {
     throw new TypeError("boundary decode requires assembly decode");
+  }
+  if (useBorrowedOutput && !useAssembly) {
+    throw new TypeError("borrowed output decode requires assembly decode");
   }
   if (useByteTable && !useTable) {
     throw new TypeError("byte-table decode requires table decode");
@@ -84,7 +89,11 @@ export function createComposedDecoder(core, options = {}) {
     stats: () => Object.freeze({ decoderCalls: 0 }),
   });
   const assembly = useAssembly
-    ? (useBoundary ? createBoundaryDecoder(core) : createAssemblyDecoder(core))
+    ? useBorrowedOutput
+      ? createBorrowedAssemblyDecoder(core)
+      : useBoundary
+        ? createBoundaryDecoder(core)
+        : createAssemblyDecoder(core)
     : raw;
   let active = assembly;
   let table = null;
@@ -127,6 +136,7 @@ export function createComposedDecoder(core, options = {}) {
     return Object.freeze({
       assemblyEnabled: useAssembly,
       boundary: useBoundary,
+      borrowedOutput: useBorrowedOutput,
       table: useTable,
       byteTable: useByteTable,
       mixedRuns: useMixedRuns,

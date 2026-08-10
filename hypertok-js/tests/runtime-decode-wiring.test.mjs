@@ -31,6 +31,7 @@ export class WasmTokenizer {
   static fromHuggingFace() { return new WasmTokenizer(); }
   decode(ids) { events.push("raw"); return decoder.decode(gather(ids)); }
   decodeAssemblyBytes(ids) { events.push("assembly"); return gather(ids); }
+  decodeBorrowedAssemblyView(ids) { events.push("borrowed"); return gather(ids); }
   tokenBytes(id) {
     const bytes = entries[id];
     if (!(bytes instanceof Uint8Array)) throw new RangeError("unknown token id " + id);
@@ -188,6 +189,16 @@ test("explicit lean dispatch preserves stats and closed-session refusal", async 
   assert.equal(tokenizer.decodeStats().tableState.tableCalls, 1);
   await tokenizer.close();
   assert.throws(() => tokenizer.decode([0]), /execution-tier session is closed/);
+});
+
+test("explicit borrowed output reaches the synchronous wasm view", async () => {
+  module.events.length = 0;
+  const tokenizer = await runtime({ decodeMemo: "off", decodeBorrowedOutput: "on" });
+  assert.equal(tokenizer.decode([2, 3]), "\u20ac");
+  assert.deepEqual(module.events, ["borrowed"]);
+  assert.equal(tokenizer.decodeStats().borrowedOutput, true);
+  assert.equal(tokenizer.decodeStats().assembly.borrowedViewCalls, 1);
+  await tokenizer.close();
 });
 
 test("explicit direct scratch reaches assembly without changing typed input routing", async () => {

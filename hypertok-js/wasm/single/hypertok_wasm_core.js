@@ -446,6 +446,19 @@ export class WasmTokenizer {
         return v2;
     }
     /**
+     * @param {Uint32Array} ids
+     * @returns {Uint8Array}
+     */
+    decodeBorrowedAssemblyView(ids) {
+        const ptr0 = passArray32ToWasm0(ids, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmtokenizer_decodeBorrowedAssemblyView(this.__wbg_ptr, ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * @returns {number}
      */
     defaultChunkSize() {

@@ -27,6 +27,8 @@ use crate::pretokenize::{Pretoken, SpanIter};
 use crate::profiling::ProfileSnapshot;
 #[cfg(feature = "htk")]
 use crate::token::TokenId;
+#[cfg(feature = "opt-decode-borrowed-output")]
+use crate::wasm_borrowed_output::BorrowedDecodeOutput;
 #[cfg(feature = "opt-decode-boundary")]
 use crate::wasm_resident_ids::ResidentIds;
 #[cfg(feature = "opt-marshalling")]
@@ -65,6 +67,8 @@ pub struct WasmTokenizer {
     resident_input: ResidentInput,
     #[cfg(feature = "opt-decode-boundary")]
     resident_decode_ids: ResidentIds,
+    #[cfg(feature = "opt-decode-borrowed-output")]
+    borrowed_decode_output: BorrowedDecodeOutput,
     #[cfg(feature = "opt-encode-into")]
     resident_output: ResidentOutput,
     #[cfg(feature = "opt-scratch-reuse")]
@@ -182,6 +186,8 @@ impl WasmTokenizer {
                 resident_input: ResidentInput::new(),
                 #[cfg(feature = "opt-decode-boundary")]
                 resident_decode_ids: ResidentIds::new(),
+                #[cfg(feature = "opt-decode-borrowed-output")]
+                borrowed_decode_output: BorrowedDecodeOutput::new(),
                 #[cfg(feature = "opt-encode-into")]
                 resident_output: ResidentOutput::new(),
                 #[cfg(feature = "opt-scratch-reuse")]
@@ -213,6 +219,8 @@ impl WasmTokenizer {
                 resident_input: ResidentInput::new(),
                 #[cfg(feature = "opt-decode-boundary")]
                 resident_decode_ids: ResidentIds::new(),
+                #[cfg(feature = "opt-decode-borrowed-output")]
+                borrowed_decode_output: BorrowedDecodeOutput::new(),
                 #[cfg(feature = "opt-encode-into")]
                 resident_output: ResidentOutput::new(),
                 #[cfg(feature = "opt-scratch-reuse")]
@@ -314,6 +322,8 @@ impl WasmTokenizer {
             resident_input: ResidentInput::new(),
             #[cfg(feature = "opt-decode-boundary")]
             resident_decode_ids: ResidentIds::new(),
+            #[cfg(feature = "opt-decode-borrowed-output")]
+            borrowed_decode_output: BorrowedDecodeOutput::new(),
             #[cfg(feature = "opt-encode-into")]
             resident_output: ResidentOutput::new(),
             #[cfg(feature = "opt-scratch-reuse")]
@@ -697,6 +707,20 @@ impl WasmTokenizer {
     #[wasm_bindgen(js_name = decodeAssemblyBytes)]
     pub fn decode_assembly_bytes(&self, ids: &[u32]) -> Result<Vec<u8>, JsError> {
         gather_decode_bytes(&self.tokenizer, &self.token_lengths, ids)
+    }
+
+    #[cfg(feature = "opt-decode-borrowed-output")]
+    #[wasm_bindgen(js_name = decodeBorrowedAssemblyView)]
+    pub fn decode_borrowed_assembly_view(
+        &mut self,
+        ids: &[u32],
+    ) -> Result<js_sys::Uint8Array, JsError> {
+        let bytes = gather_decode_bytes(&self.tokenizer, &self.token_lengths, ids)?;
+        let output = self.borrowed_decode_output.replace(bytes);
+        // SAFETY: the JavaScript decoder consumes this view synchronously before another
+        // WebAssembly call can replace the buffer or grow linear memory. The view is not
+        // exposed by the public tokenizer handle.
+        Ok(unsafe { js_sys::Uint8Array::view(output) })
     }
 
     #[cfg(feature = "opt-decode-boundary")]

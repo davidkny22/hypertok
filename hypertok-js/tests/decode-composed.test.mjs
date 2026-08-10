@@ -32,6 +32,7 @@ function coreFixture() {
     },
     decode: (ids) => decoder.decode(gather(ids)),
     decodeAssemblyBytes: gather,
+    decodeBorrowedAssemblyView: gather,
     residentDecodeIdsCapacity: () => resident.length,
     residentDecodeIdsHighWater: () => resident.length,
     residentDecodeIdsView: () => resident,
@@ -58,6 +59,7 @@ for (const configuration of [
   { boundary: false, table: false, hotStrings: false },
   { assembly: false, boundary: false, table: false, hotStrings: false },
   { boundary: true, table: false, hotStrings: false },
+  { boundary: false, borrowedOutput: true, table: false, hotStrings: false },
   { boundary: false, table: true, hotStrings: false },
   { boundary: false, table: true, byteTable: true, hotStrings: false },
   { boundary: false, table: true, mixedRuns: true, hotStrings: false },
@@ -82,6 +84,7 @@ for (const configuration of [
     assert.equal(composed.decode(Uint32Array.of(2, 3)), "€");
     assert.throws(() => composed.decode(Uint32Array.of(9)), /unknown token id/);
     assert.equal(composed.stats().boundary, configuration.boundary);
+    assert.equal(composed.stats().borrowedOutput, configuration.borrowedOutput === true);
     assert.equal(composed.stats().table, configuration.table);
     assert.equal(composed.stats().byteTable, configuration.byteTable === true);
     assert.equal(composed.stats().mixedRuns, configuration.mixedRuns === true);
@@ -123,6 +126,10 @@ test("validates the composed core and options", () => {
   assert.throws(
     () => createComposedDecoder(coreFixture(), { assembly: false, boundary: true }),
     /boundary decode requires assembly/,
+  );
+  assert.throws(
+    () => createComposedDecoder(coreFixture(), { assembly: false, borrowedOutput: true }),
+    /borrowed output decode requires assembly/,
   );
   assert.throws(
     () => createComposedDecoder(coreFixture(), { table: false, byteTable: true }),
