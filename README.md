@@ -41,6 +41,25 @@ license notices only, with no dependency on the core package or its repository s
 
 ## Use
 
+In Node, load the installed vocabulary package through `loadVocab`:
+
+```js
+import { fromBytes } from "hypertok";
+import { loadVocab } from "hypertok/vocab-resolve";
+
+const bytes = await loadVocab("o200k");
+const tokenizer = await fromBytes(bytes);
+
+const detailed = await tokenizer.encodeDetailed("hello world");
+console.log(detailed.ids);
+console.log(detailed.starts);
+console.log(tokenizer.decode(detailed.ids));
+
+tokenizer.free();
+```
+
+Browser bundles can fetch the vocabulary asset exported by its package:
+
 ```js
 import { fromBytes } from "hypertok";
 import { vocabulary } from "@hypertok/vocab-o200k";
@@ -49,10 +68,8 @@ const response = await fetch(vocabulary);
 const bytes = new Uint8Array(await response.arrayBuffer());
 const tokenizer = await fromBytes(bytes);
 
-const detailed = await tokenizer.encodeDetailed("hello world");
-console.log(detailed.ids);
-console.log(detailed.starts);
-console.log(tokenizer.decode(detailed.ids));
+const ids = await tokenizer.encode("hello world");
+console.log(tokenizer.decode(ids));
 
 tokenizer.free();
 ```
