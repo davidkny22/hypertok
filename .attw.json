@@ -1,0 +1,8 @@
+{
+  "profile": "esm-only",
+  "excludeEntrypoints": [
+    "wasm/single/hypertok_wasm_core_bg.wasm",
+    "vocab.htk",
+    "p50k-edit.htk"
+  ]
+}

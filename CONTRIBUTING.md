@@ -80,6 +80,11 @@ and browser behavior. `release` owns the installed package, demo, attribution, b
 and shipped graph. `mutation` proves the affected verifier turns red for a behavioral
 fault. `benchmark:smoke` owns public harness changes and reference reachability.
 
+The package type audit uses attw's `esm-only` profile because hypertok has no CommonJS entry
+point; CommonJS consumers use dynamic `import()`. The audit excludes the exported `.wasm` and
+`.htk` subpaths because they are binary assets for bundlers and vocabulary loaders, not typed
+JavaScript modules. Every JavaScript entry point remains in the audit.
+
 The PowerShell entrypoint is the current release orchestrator. Its Rust and Node
 commands remain directly runnable from `tests/suites/manifest.json` on other operating
 systems.
