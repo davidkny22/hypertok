@@ -24,6 +24,7 @@ assert.deepEqual(automatic.decode, {
   portableLatin1: false,
   fusedValidation: true,
   leanDispatch: false,
+  directScratch: false,
   memo: true,
   raw: false,
 });
@@ -89,6 +90,7 @@ assert.deepEqual(tableOff.decode, {
   portableLatin1: false,
   fusedValidation: false,
   leanDispatch: false,
+  directScratch: false,
   memo: true,
   raw: false,
 });
@@ -105,6 +107,7 @@ assert.deepEqual(assemblyOff.decode, {
   portableLatin1: false,
   fusedValidation: false,
   leanDispatch: false,
+  directScratch: false,
   memo: true,
   raw: true,
 });
@@ -152,6 +155,12 @@ assert.equal(leanDispatchOn.states.decodeLeanDispatch, "on");
 assert.equal(leanDispatchOn.decode.leanDispatch, true);
 assert.deepEqual(leanDispatchOn.overrides, [
   { path: "hypertok.optimizations.decodeLeanDispatch", value: "on" },
+]);
+const directScratchOn = resolveOptimizationConfig({ decodeDirectScratch: "on" });
+assert.equal(directScratchOn.states.decodeDirectScratch, "on");
+assert.equal(directScratchOn.decode.directScratch, true);
+assert.deepEqual(directScratchOn.overrides, [
+  { path: "hypertok.optimizations.decodeDirectScratch", value: "on" },
 ]);
 const memoOn = resolveOptimizationConfig({ decodeMemo: "on" });
 assert.equal(memoOn.states.decodeMemo, "on");

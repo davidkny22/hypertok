@@ -1,5 +1,6 @@
 import { createMaximalRunCache } from "./decode-run-cache.mjs";
 import { createNativeLatin1Decoder } from "./decode-latin1.mjs";
+import { createValidatedIdScratch } from "./decode-id-scratch.mjs";
 
 const DEFAULT_SEED_ENTRIES = 8192;
 const DEFAULT_MAX_TABLE_IDS = 256 * 1024;
@@ -343,6 +344,13 @@ export function createDecodeTable(core, options = {}) {
     throw new TypeError("leanDispatch must be a boolean");
   }
   const validateTokenId = useLeanDispatch ? validTokenIdFast : validTokenId;
+  const useDirectScratch = options.directScratch ?? false;
+  if (typeof useDirectScratch !== "boolean") {
+    throw new TypeError("directScratch must be a boolean");
+  }
+  if (useDirectScratch && !useMixedRuns) {
+    throw new TypeError("direct ID scratch requires mixed-run decode");
+  }
   const maxMixedDirtyDensity = density(options.maxMixedDirtyDensity, 0.5);
   const mixedRunPenalty = nonnegativeNumber(
     options.mixedRunPenalty,
@@ -384,6 +392,8 @@ export function createDecodeTable(core, options = {}) {
         portable: usePortableLatin1,
       })
     : null;
+  const directScratch = useDirectScratch ? createValidatedIdScratch(validateTokenId) : null;
+  let directScratchCalls = 0;
 
   function inspect(id) {
     if (id >= size) return 3;
@@ -493,23 +503,29 @@ export function createDecodeTable(core, options = {}) {
     return { ids, firstMiss: earliestMiss };
   }
 
-  function decodeCareful(input, firstMiss) {
-    const prepared = useFusedValidation
-      ? fusedTokenIds(input, firstMiss)
-      : { ids: strictTokenIds(input), firstMiss: 0 };
-    const { ids } = prepared;
+  function sampleDirty(ids) {
     const sampleCount = Math.min(32, ids.length);
     let sampledDirty = 0;
     for (let sample = 0; sample < sampleCount; sample += 1) {
       const id = ids[Math.floor((sample * ids.length) / sampleCount)];
       const state = inspect(id);
-      if (state === 3) {
-        unknownFallbackCalls += 1;
-        return fallback(ids);
-      }
+      if (state === 3) return { sampleCount, sampledDirty, unknown: true };
       if (state === 2) sampledDirty += 1;
     }
-    if (useMixedRuns && sampledDirty / sampleCount > maxMixedDirtyDensity) {
+    return { sampleCount, sampledDirty, unknown: false };
+  }
+
+  function decodeCareful(input, firstMiss, sample = null) {
+    const prepared = useFusedValidation
+      ? fusedTokenIds(input, firstMiss)
+      : { ids: strictTokenIds(input), firstMiss: 0 };
+    const { ids } = prepared;
+    const sampled = sample ?? sampleDirty(ids);
+    if (sampled.unknown) {
+      unknownFallbackCalls += 1;
+      return fallback(ids);
+    }
+    if (useMixedRuns && sampled.sampledDirty / sampled.sampleCount > maxMixedDirtyDensity) {
       dirtyFallbackCalls += 1;
       sampledFallbackCalls += 1;
       mixedDensityFallbackCalls += 1;
@@ -518,7 +534,7 @@ export function createDecodeTable(core, options = {}) {
       }
       return fallback(ids);
     }
-    if (!useMixedRuns && sampledDirty / sampleCount > maxDirtyDensity) {
+    if (!useMixedRuns && sampled.sampledDirty / sampled.sampleCount > maxDirtyDensity) {
       dirtyFallbackCalls += 1;
       sampledFallbackCalls += 1;
       if ((useNativeLatin1 && latin1?.available) || usePortableLatin1) return decodeLatin1(ids);
@@ -610,9 +626,7 @@ export function createDecodeTable(core, options = {}) {
     return output;
   }
 
-  function decode(input) {
-    const ids = tokenContainer(input);
-    initialize();
+  function decodePrepared(ids, preparedByScratch) {
     if (ids.length === 0) {
       tableCalls += 1;
       return "";
@@ -622,12 +636,37 @@ export function createDecodeTable(core, options = {}) {
       largeFallbackCalls += 1;
       return fallback(ids);
     }
+    let sampled = null;
+    if (preparedByScratch) {
+      sampled = sampleDirty(ids);
+      if (sampled.unknown) {
+        unknownFallbackCalls += 1;
+        directScratchCalls += 1;
+        return fallback(ids);
+      }
+      if (sampled.sampledDirty / sampled.sampleCount > maxMixedDirtyDensity) {
+        dirtyFallbackCalls += 1;
+        sampledFallbackCalls += 1;
+        mixedDensityFallbackCalls += 1;
+        directScratchCalls += 1;
+        return fallback(ids);
+      }
+    }
     const output = joinKnownClean(ids);
     if (typeof output === "string") {
       tableCalls += 1;
       return output;
     }
-    return decodeCareful(ids, output);
+    return decodeCareful(ids, output, sampled);
+  }
+
+  function decode(input) {
+    const ids = tokenContainer(input);
+    initialize();
+    if (directScratch !== null && Array.isArray(ids)) {
+      return directScratch.withValidated(ids, (prepared) => decodePrepared(prepared, true));
+    }
+    return decodePrepared(ids, false);
   }
 
   function tokenString(id) {
@@ -657,6 +696,9 @@ export function createDecodeTable(core, options = {}) {
       portableLatin1State: usePortableLatin1 ? latin1?.stats() ?? null : null,
       fusedValidationEnabled: useFusedValidation,
       leanDispatchEnabled: useLeanDispatch,
+      directScratchEnabled: useDirectScratch,
+      directScratchCalls,
+      directScratchState: directScratch?.stats() ?? null,
       maxMixedDirtyDensity,
       mixedRunPenalty,
       mixedDensityFallbackCalls,

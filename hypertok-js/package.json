@@ -10,6 +10,7 @@
     "src/decode-boundary.mjs",
     "src/decode-composed.mjs",
     "src/decode-hotstrings.mjs",
+    "src/decode-id-scratch.mjs",
     "src/decode-latin1.mjs",
     "src/decode-memo.mjs",
     "src/decode-run-cache.mjs",

@@ -319,13 +319,18 @@ export async function probeAdapters() {
 export async function runDecodeRoutePricing({
   candidateMode = "byte",
   containerRegime = "repeated",
+  vocabulary = "gpt2",
+  workloadIds,
   n = 21,
   warmup = 2,
 } = {}) {
   const [bytes, workloads] = await Promise.all([
-    fetchBytes("/assets/gpt2.htk"),
+    fetchBytes(vocabulary === "gpt2" ? "/assets/gpt2.htk" : "/assets/o200k.htk"),
     loadWorkloads(),
   ]);
+  const selectedWorkloads = workloadIds === undefined
+    ? workloads
+    : workloads.filter(({ id }) => workloadIds.includes(id));
   const baseline = await fromBytes(bytes, {
     tier: "single",
     optimizations:
@@ -339,8 +344,10 @@ export async function runDecodeRoutePricing({
               ? { decodeMemo: "off", decodeRunCache: "off" }
               : candidateMode === "latin1-native"
                 ? { decodeMemo: "off", decodeLatin1Native: "off" }
-                : candidateMode === "latin1-portable"
-                  ? { decodeMemo: "off", decodeLatin1Portable: "off" }
+              : candidateMode === "latin1-portable"
+                ? { decodeMemo: "off", decodeLatin1Portable: "off" }
+                : candidateMode === "direct-scratch"
+                  ? { decodeMemo: "off", decodeDirectScratch: "off" }
           : { decodeMixedRuns: "off" },
   });
   const candidate = await fromBytes(bytes, {
@@ -360,13 +367,15 @@ export async function runDecodeRoutePricing({
                 ? { decodeMemo: "off", decodeLatin1Native: "on" }
                 : candidateMode === "latin1-portable"
                   ? { decodeMemo: "off", decodeLatin1Portable: "on" }
+                  : candidateMode === "direct-scratch"
+                    ? { decodeMemo: "off", decodeDirectScratch: "on" }
           : { decodeByteTable: "on" },
   });
   try {
     return measureDecodeRoutes({
       baseline,
       candidate,
-      workloads,
+      workloads: selectedWorkloads,
       candidateMode,
       containerRegime,
       n,

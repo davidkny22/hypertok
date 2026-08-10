@@ -129,6 +129,7 @@
         "tests/decode-boundary.test.mjs",
         "tests/decode-composed.test.mjs",
         "tests/decode-hotstrings.test.mjs",
+        "tests/decode-id-scratch.test.mjs",
         "tests/decode-table.test.mjs",
         "tests/runtime-decode-wiring.test.mjs",
         "tests/tier-runtime-lifecycle.test.mjs",

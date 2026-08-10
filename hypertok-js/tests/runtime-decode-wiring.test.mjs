@@ -190,6 +190,19 @@ test("explicit lean dispatch preserves stats and closed-session refusal", async 
   assert.throws(() => tokenizer.decode([0]), /execution-tier session is closed/);
 });
 
+test("explicit direct scratch reaches assembly without changing typed input routing", async () => {
+  module.events.length = 0;
+  const tokenizer = await runtime({ decodeMemo: "off", decodeDirectScratch: "on" });
+  const dense = [2, 3, 2, 3];
+  assert.equal(tokenizer.decode(dense), "€€");
+  assert.deepEqual(module.events, ["assembly"]);
+  const beforeTyped = tokenizer.decodeStats().tableState.directScratchCalls;
+  assert.equal(tokenizer.decode(Uint32Array.from(dense)), "€€");
+  assert.equal(tokenizer.decodeStats().tableState.directScratchCalls, beforeTyped);
+  assert.equal(tokenizer.decodeStats().directScratch, true);
+  await tokenizer.close();
+});
+
 test("explicit memo verifies content and preserves a reachable cache-off refuge", async () => {
   module.events.length = 0;
   const tokenizer = await runtime({ decodeMemo: "on" });

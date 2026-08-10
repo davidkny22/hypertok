@@ -66,6 +66,7 @@ for (const configuration of [
   { boundary: false, table: true, mixedRuns: true, portableLatin1: true, hotStrings: false },
   { boundary: false, table: true, mixedRuns: true, fusedValidation: true, hotStrings: false },
   { boundary: false, table: true, mixedRuns: true, fusedValidation: true, leanDispatch: true, hotStrings: false },
+  { boundary: false, table: true, mixedRuns: true, fusedValidation: true, directScratch: true, hotStrings: false },
   { boundary: false, table: true, mixedRuns: true, fusedValidation: true, memo: true, hotStrings: false },
   { boundary: false, table: false, hotStrings: true },
   { boundary: true, table: true, hotStrings: true },
@@ -88,6 +89,7 @@ for (const configuration of [
     assert.equal(composed.stats().portableLatin1, configuration.portableLatin1 === true);
     assert.equal(composed.stats().fusedValidation, configuration.fusedValidation === true);
     assert.equal(composed.stats().leanDispatch, configuration.leanDispatch === true);
+    assert.equal(composed.stats().directScratch, configuration.directScratch === true);
     assert.equal(composed.stats().memo, configuration.memo === true);
     assert.equal(composed.stats().hotStrings, configuration.hotStrings);
     if (configuration.memo) {

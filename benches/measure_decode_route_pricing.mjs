@@ -6,7 +6,7 @@ import { launchHarnessBrowser, observeRequests } from "./browser/control.mjs";
 import { startHarnessServer } from "./browser/server.mjs";
 import { loadCorpus } from "./common/corpus.mjs";
 import { measureDecodeRoutes } from "./common/decode_route_pricing.mjs";
-import { buildBenchmarkHtk } from "./common/gpt2_htk.mjs";
+import { prepareVocabularyArtifact, vocabularyRegistry } from "./common/vocabularies.mjs";
 import { fromBytes } from "../hypertok-js/src/index.mjs";
 import { resolveShimRuntime } from "../hypertok-js/src/shim-runtime.mjs";
 
@@ -14,8 +14,8 @@ const benchesDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryDirectory = path.resolve(benchesDirectory, "..");
 const candidateArgument = process.argv.find((argument) => argument.startsWith("--candidate="));
 const candidateMode = candidateArgument?.slice("--candidate=".length) ?? "byte";
-if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable"]).has(candidateMode)) {
-  throw new TypeError("candidate must be byte, mixed, fused, lean, memo, run-cache, latin1-native, or latin1-portable");
+if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable", "direct-scratch"]).has(candidateMode)) {
+  throw new TypeError("candidate is not supported by decode route pricing");
 }
 const outputPath = path.join(
   repositoryDirectory,
@@ -33,16 +33,27 @@ const outputPath = path.join(
             ? "run-cache-pricing.json"
             : candidateMode === "latin1-native"
               ? "native-latin1-pricing.json"
-              : candidateMode === "latin1-portable"
-                ? "portable-latin1-pricing.json"
+            : candidateMode === "latin1-portable"
+              ? "portable-latin1-pricing.json"
+              : candidateMode === "direct-scratch"
+                ? "direct-scratch-pricing.json"
       : "route-pricing.json",
 );
-const htk = buildBenchmarkHtk();
-const workloads = loadCorpus();
-const regimes = candidateMode === "memo" ? ["repeated", "fresh"] : ["repeated"];
+const artifacts = vocabularyRegistry.map(({ id }) => prepareVocabularyArtifact(id));
+const decisionWorkloads = candidateMode === "direct-scratch"
+  ? new Set(["chinese", "emoji-heavy"])
+  : null;
+const workloads = loadCorpus().filter(({ id }) =>
+  decisionWorkloads === null || decisionWorkloads.has(id)
+);
+const regimes = candidateMode === "memo"
+  ? ["repeated", "fresh"]
+  : candidateMode === "direct-scratch"
+    ? ["fresh"]
+    : ["repeated"];
 
-async function measureNode(containerRegime) {
-  const baseline = await fromBytes(htk.bytes, {
+async function measureNode(containerRegime, artifact) {
+  const baseline = await fromBytes(artifact.bytes, {
     tier: "single",
     optimizations:
       candidateMode === "fused"
@@ -55,11 +66,13 @@ async function measureNode(containerRegime) {
               ? { decodeMemo: "off", decodeRunCache: "off" }
               : candidateMode === "latin1-native"
                 ? { decodeMemo: "off", decodeLatin1Native: "off" }
-                : candidateMode === "latin1-portable"
-                  ? { decodeMemo: "off", decodeLatin1Portable: "off" }
+              : candidateMode === "latin1-portable"
+                ? { decodeMemo: "off", decodeLatin1Portable: "off" }
+                : candidateMode === "direct-scratch"
+                  ? { decodeMemo: "off", decodeDirectScratch: "off" }
             : { decodeMixedRuns: "off" },
   });
-  const candidate = await fromBytes(htk.bytes, {
+  const candidate = await fromBytes(artifact.bytes, {
     tier: "single",
     optimizations:
       candidateMode === "mixed"
@@ -74,8 +87,10 @@ async function measureNode(containerRegime) {
                 ? { decodeMemo: "off", decodeRunCache: "on" }
                 : candidateMode === "latin1-native"
                   ? { decodeMemo: "off", decodeLatin1Native: "on" }
-                  : candidateMode === "latin1-portable"
-                    ? { decodeMemo: "off", decodeLatin1Portable: "on" }
+                : candidateMode === "latin1-portable"
+                  ? { decodeMemo: "off", decodeLatin1Portable: "on" }
+                  : candidateMode === "direct-scratch"
+                    ? { decodeMemo: "off", decodeDirectScratch: "on" }
               : { decodeByteTable: "on" },
   });
   try {
@@ -94,8 +109,14 @@ async function measureNode(containerRegime) {
   }
 }
 
-const nodeRegimes = {};
-for (const regime of regimes) nodeRegimes[regime] = await measureNode(regime);
+const nodeVocabularies = {};
+for (const artifact of artifacts) {
+  const nodeRegimes = {};
+  for (const regime of regimes) nodeRegimes[regime] = await measureNode(regime, artifact);
+  nodeVocabularies[artifact.vocabulary] = candidateMode === "memo"
+    ? { regimes: nodeRegimes }
+    : nodeRegimes[regimes[0]];
+}
 
 await buildBrowserBundle();
 const server = await startHarnessServer();
@@ -107,16 +128,30 @@ try {
   const requests = observeRequests(page);
   await page.goto(server.origin, { waitUntil: "load" });
   await page.evaluate(() => globalThis.harnessReady);
-  for (const regime of regimes) {
-    chromeRegimes[regime] = await page.evaluate(
-      ({ mode, containerRegime }) => globalThis.harness.runDecodeRoutePricing({
-        candidateMode: mode,
-        containerRegime,
-        n: 21,
-        warmup: 2,
-      }),
-      { mode: candidateMode, containerRegime: regime },
-    );
+  for (const artifact of artifacts) {
+    const vocabularyRegimes = {};
+    for (const regime of regimes) {
+      vocabularyRegimes[regime] = await page.evaluate(
+        ({ mode, containerRegime, vocabulary, workloadIds }) =>
+          globalThis.harness.runDecodeRoutePricing({
+            candidateMode: mode,
+            containerRegime,
+            vocabulary,
+            workloadIds,
+            n: 21,
+            warmup: 2,
+          }),
+        {
+          mode: candidateMode,
+          containerRegime: regime,
+          vocabulary: artifact.vocabulary,
+          workloadIds: workloads.map(({ id }) => id),
+        },
+      );
+    }
+    chromeRegimes[artifact.vocabulary] = candidateMode === "memo"
+      ? { regimes: vocabularyRegimes }
+      : vocabularyRegimes[regimes[0]];
   }
   requestProof = requests.assertLocal(server.origin);
   await page.close();
@@ -125,31 +160,25 @@ try {
   await server.close();
 }
 
-const nodeOutput = candidateMode === "memo"
-  ? Object.freeze({ environment: "node", runtime: process.version, regimes: nodeRegimes })
-  : Object.freeze({ environment: "node", runtime: process.version, ...nodeRegimes.repeated });
-const chromeOutput = candidateMode === "memo"
-  ? Object.freeze({
-      environment: "chrome",
-      browserVersion,
-      executablePath,
-      crossOriginIsolated: true,
-      requestProof,
-      regimes: chromeRegimes,
-    })
-  : Object.freeze({
-      environment: "chrome",
-      browserVersion,
-      executablePath,
-      crossOriginIsolated: true,
-      requestProof,
-      ...chromeRegimes.repeated,
-    });
+const nodeOutput = Object.freeze({
+  environment: "node",
+  runtime: process.version,
+  vocabularies: nodeVocabularies,
+});
+const chromeOutput = Object.freeze({
+  environment: "chrome",
+  browserVersion,
+  executablePath,
+  crossOriginIsolated: true,
+  requestProof,
+  vocabularies: chromeRegimes,
+});
 const output = Object.freeze({
-  schemaVersion: candidateMode === "memo" ? 2 : 1,
+  schemaVersion: 3,
   candidateMode,
-  sourceSha256: htk.sourceSha256,
-  htkSha256: htk.sha256,
+  artifacts: artifacts.map(({ vocabulary, sourceSha256, sha256 }) =>
+    Object.freeze({ vocabulary, sourceSha256, htkSha256: sha256 })
+  ),
   node: nodeOutput,
   chrome: chromeOutput,
 });

@@ -143,6 +143,11 @@ const repeated = measureDecodeRoutes({
 });
 assert.equal(repeated.containerRegime, "repeated");
 assert.equal(new Set(repeatedCandidate.seen).size, 1);
+assert.equal(repeated.rows[0].all.pairedRatio.n, 3);
+assert.equal(
+  repeated.rows[0].pairedCandidateToBaselineTimeRatio,
+  repeated.rows[0].all.pairedRatio.median,
+);
 
 const freshBaseline = routeFixture();
 const freshCandidate = routeFixture();

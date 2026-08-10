@@ -286,6 +286,60 @@ test("routes dirty-dense segments through the portable Latin-1 bulk path", () =>
   assert.equal(table.stats().portableLatin1State.portableDecoderCalls, 1);
 });
 
+test("routes high-dirty arrays through one reusable validated ID scratch", () => {
+  const entries = [encoder.encode("a"), Uint8Array.of(0xe2), Uint8Array.of(0x82, 0xac)];
+  const { table, fallbackInputs, fallbackKinds } = fixture(entries, {
+    mixedRuns: true,
+    fusedValidation: true,
+    directScratch: true,
+    maxMixedDirtyDensity: 0.5,
+  });
+  const reads = [0, 0, 0, 0];
+  const input = [1, 2, 1, 2];
+  for (let index = 0; index < input.length; index += 1) {
+    const id = input[index];
+    Object.defineProperty(input, index, {
+      configurable: true,
+      get() {
+        reads[index] += 1;
+        return id;
+      },
+    });
+  }
+  assert.equal(table.decode(input), "€€");
+  assert.deepEqual(reads, [1, 1, 1, 1]);
+  assert.equal(table.decode([1, 2, 1, 2]), "€€");
+  assert.deepEqual(fallbackInputs, [[1, 2, 1, 2], [1, 2, 1, 2]]);
+  assert.deepEqual(fallbackKinds, ["typed", "typed"]);
+  const stats = table.stats();
+  assert.equal(stats.directScratchEnabled, true);
+  assert.equal(stats.directScratchCalls, 2);
+  assert.deepEqual(stats.directScratchState, {
+    capacity: 4,
+    preparations: 2,
+    grows: 1,
+    reentrantAllocations: 0,
+  });
+  assert.throws(() => table.decode([1, -1]), /decode input/);
+});
+
+test("keeps typed and shared-memory containers off the reusable ID scratch", () => {
+  const entries = [encoder.encode("a"), Uint8Array.of(0xe2)];
+  const { table } = fixture(entries, {
+    mixedRuns: true,
+    fusedValidation: true,
+    directScratch: true,
+    maxMixedDirtyDensity: 0,
+  });
+  const typed = typeof SharedArrayBuffer === "function"
+    ? new Uint32Array(new SharedArrayBuffer(4))
+    : Uint32Array.of(1);
+  typed[0] = 1;
+  assert.equal(table.decode(typed), "�");
+  assert.equal(table.stats().directScratchCalls, 0);
+  assert.equal(table.stats().directScratchState.preparations, 0);
+});
+
 test("routes equal dirty density by dirty-run count", () => {
   const entries = [encoder.encode("A"), Uint8Array.of(0xe2), Uint8Array.of(0x82, 0xac)];
   const { table, fallbackInputs } = fixture(entries, {
@@ -482,6 +536,11 @@ test("validates options, inputs, and the core seam", () => {
   );
   assert.throws(() => createDecodeTable(core, { fusedValidation: "on" }), /must be a boolean/);
   assert.throws(() => createDecodeTable(core, { leanDispatch: "on" }), /must be a boolean/);
+  assert.throws(() => createDecodeTable(core, { directScratch: "on" }), /must be a boolean/);
+  assert.throws(
+    () => createDecodeTable(core, { directScratch: true }),
+    /requires mixed-run decode/,
+  );
   assert.throws(() => createDecodeTable(core, { mixedRunPenalty: -1 }), /nonnegative finite/);
   assert.throws(() => createDecodeTable(core).decode([1.5]), /array of u32/);
 });

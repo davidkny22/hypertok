@@ -226,6 +226,22 @@ test("public explicit lean dispatch preserves decode stats and free semantics", 
   assert.throws(() => handle.decode(ids), /execution-tier session is closed/);
 });
 
+test("public direct scratch routes high-dirty arrays through reusable validated IDs", async () => {
+  const { handle, runtime } = await loaded({ decodeMemo: "off", decodeDirectScratch: "on" });
+  try {
+    const fixture = dirtyFixture(handle);
+    assert.equal(handle.decode(fixture.ids), fixture.text);
+    assert.equal(handle.decode(Array.from(fixture.ids)), fixture.text);
+    const stats = runtime.decodeStats();
+    assert.equal(stats.directScratch, true);
+    assert.equal(stats.tableState.directScratchEnabled, true);
+    assert.equal(stats.tableState.directScratchCalls, 2);
+    assert.equal(stats.tableState.directScratchState.preparations, 2);
+  } finally {
+    handle.free();
+  }
+});
+
 test("public explicit memo verifies repeated container content", async () => {
   const { handle, runtime } = await loaded({ decodeMemo: "on" });
   try {

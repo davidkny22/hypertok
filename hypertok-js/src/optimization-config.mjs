@@ -26,6 +26,7 @@ const runtimeDefinitions = Object.freeze([
   Object.freeze(["decodeLatin1Portable", false, "off"]),
   Object.freeze(["decodeFusedValidation", true, "auto"]),
   Object.freeze(["decodeLeanDispatch", false, "off"]),
+  Object.freeze(["decodeDirectScratch", false, "off"]),
   Object.freeze(["decodeMemo", true, "auto"]),
 ]);
 
@@ -82,6 +83,7 @@ export function resolveOptimizationConfig(value) {
       key === "decodeLatin1Portable" ||
       key === "decodeFusedValidation" ||
       key === "decodeLeanDispatch" ||
+      key === "decodeDirectScratch" ||
       key === "decodeMemo";
     const explicitlyEnabled = candidate && state === "on";
     if (state !== "auto" && state !== "off" && !explicitlyEnabled) {
@@ -129,6 +131,8 @@ export function resolveOptimizationConfig(value) {
       (states.decodeFusedValidation === "on" || admitted("decodeFusedValidation")),
     leanDispatch:
       states.decodeLeanDispatch === "on" || admitted("decodeLeanDispatch"),
+    directScratch:
+      mixedRuns && (states.decodeDirectScratch === "on" || admitted("decodeDirectScratch")),
     memo: states.decodeMemo === "on" || admitted("decodeMemo"),
     raw: !assembly,
   });

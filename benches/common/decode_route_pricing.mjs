@@ -114,7 +114,13 @@ function measurePair(left, right, segments, iterations, n, warmup, now, containe
       leftSamples.push(elapsed(left, segments, iterations, now, containerRegime));
     }
   }
-  return Object.freeze({ left: summarize(leftSamples), right: summarize(rightSamples) });
+  return Object.freeze({
+    left: summarize(leftSamples),
+    right: summarize(rightSamples),
+    pairedRatio: summarize(
+      rightSamples.map((milliseconds, index) => milliseconds / leftSamples[index]),
+    ),
+  });
 }
 
 export function measureDecodeRoutes({
@@ -132,8 +138,8 @@ export function measureDecodeRoutes({
   warmup = 2,
   now = () => performance.now(),
 }) {
-  if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable"]).has(candidateMode)) {
-    throw new TypeError("candidateMode must be byte, mixed, fused, lean, memo, run-cache, latin1-native, or latin1-portable");
+  if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable", "direct-scratch"]).has(candidateMode)) {
+    throw new TypeError("candidateMode is not supported by decode route pricing");
   }
   if (!new Set(["repeated", "fresh"]).has(containerRegime)) {
     throw new TypeError("containerRegime must be repeated or fresh");
@@ -269,6 +275,7 @@ export function measureDecodeRoutes({
           : (candidateAssembly.right.median - candidateAssembly.left.median) /
             (candidateAssemblySegments.length * iterations),
       candidateToBaselineTimeRatio: all.right.median / all.left.median,
+      pairedCandidateToBaselineTimeRatio: all.pairedRatio.median,
       candidateMode,
       containerRegime,
       maxMixedDirtyDensity:
