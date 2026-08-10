@@ -15,7 +15,7 @@ const automatic = resolveOptimizationConfig();
 assert.deepEqual(automatic.decode, {
   assembly: true,
   boundary: false,
-  borrowedOutput: false,
+  borrowedOutput: true,
   utf16Output: false,
   hotStrings: false,
   table: true,
@@ -27,7 +27,7 @@ assert.deepEqual(automatic.decode, {
   fusedValidation: true,
   leanDispatch: false,
   cleanUnroll: false,
-  directScratch: false,
+  directScratch: true,
   memo: true,
   raw: false,
 });
@@ -84,7 +84,7 @@ const tableOff = resolveOptimizationConfig({ decodeTable: "off" });
 assert.deepEqual(tableOff.decode, {
   assembly: true,
   boundary: false,
-  borrowedOutput: false,
+  borrowedOutput: true,
   utf16Output: false,
   hotStrings: false,
   table: false,

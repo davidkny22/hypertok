@@ -62,12 +62,14 @@ test("public automatic decode reaches the routed table and sparse mixed path", a
     assert.equal(handle.decode(Array.from(handle.encodeSync(mixedText))), mixedText);
     const stats = runtime.decodeStats();
     assert.equal(stats.assemblyEnabled, true);
+    assert.equal(stats.borrowedOutput, true);
     assert.equal(stats.table, true);
     assert.equal(stats.mixedRuns, true);
     assert.equal(stats.runCache, true);
     assert.equal(stats.nativeLatin1, false);
     assert.equal(stats.portableLatin1, false);
     assert.equal(stats.fusedValidation, true);
+    assert.equal(stats.directScratch, true);
     assert.equal(stats.leanDispatch, false);
     assert.equal(stats.memo, true);
     assert.ok(stats.tableState.tableCalls > 0);
@@ -107,7 +109,11 @@ test("public explicit maximal-run cache preserves mutation and an off refuge", a
 });
 
 test("public explicit native Latin-1 decode reaches the packaged dirty path", async () => {
-  const { handle, runtime } = await loaded({ decodeMemo: "off", decodeLatin1Native: "on" });
+  const { handle, runtime } = await loaded({
+    decodeMemo: "off",
+    decodeLatin1Native: "on",
+    decodeDirectScratch: "off",
+  });
   try {
     const fixture = dirtyFixture(handle);
     assert.equal(handle.decode(fixture.ids), fixture.text);
@@ -122,7 +128,11 @@ test("public explicit native Latin-1 decode reaches the packaged dirty path", as
 });
 
 test("public explicit portable Latin-1 decode reaches the packaged dirty path", async () => {
-  const { handle, runtime } = await loaded({ decodeMemo: "off", decodeLatin1Portable: "on" });
+  const { handle, runtime } = await loaded({
+    decodeMemo: "off",
+    decodeLatin1Portable: "on",
+    decodeDirectScratch: "off",
+  });
   try {
     const fixture = dirtyFixture(handle);
     assert.equal(handle.decode(fixture.ids), fixture.text);
@@ -195,7 +205,10 @@ test("public explicit mixed-run decode stitches a sparse dirty segment", async (
 });
 
 test("public explicit fused validation reaches a dirty assembly fallback", async () => {
-  const { handle, runtime } = await loaded({ decodeFusedValidation: "on" });
+  const { handle, runtime } = await loaded({
+    decodeFusedValidation: "on",
+    decodeBorrowedOutput: "off",
+  });
   try {
     const fatal = new TextDecoder("utf-8", { fatal: true });
     const dirty = [];
@@ -258,7 +271,11 @@ test("public borrowed output decodes the packaged wasm view synchronously", asyn
 });
 
 test("public UTF-16 output preserves exact dense decode through the packaged wasm", async () => {
-  const { handle, runtime } = await loaded({ decodeMemo: "off", decodeUtf16Output: "on" });
+  const { handle, runtime } = await loaded({
+    decodeMemo: "off",
+    decodeUtf16Output: "on",
+    decodeBorrowedOutput: "off",
+  });
   try {
     const fixture = dirtyFixture(handle);
     assert.equal(handle.decode(fixture.ids), fixture.text);
@@ -293,7 +310,11 @@ test("public UTF-16 output preserves exact dense decode through the packaged was
 });
 
 test("public direct scratch routes high-dirty arrays through reusable validated IDs", async () => {
-  const { handle, runtime } = await loaded({ decodeMemo: "off", decodeDirectScratch: "on" });
+  const { handle, runtime } = await loaded({
+    decodeMemo: "off",
+    decodeDirectScratch: "on",
+    decodeBorrowedOutput: "off",
+  });
   try {
     const fixture = dirtyFixture(handle);
     assert.equal(handle.decode(fixture.ids), fixture.text);

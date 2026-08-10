@@ -79,12 +79,13 @@ test("auto decode reaches table, mixed runs, and the assembly refuge", async () 
   assert.deepEqual(module.events, []);
   const twoDirtyRuns = [2, 3, 0, 2, 3, ...Array(5).fill(0)];
   assert.equal(tokenizer.decode(twoDirtyRuns), `\u20aca\u20ac${"a".repeat(5)}`);
-  assert.deepEqual(module.events, ["assembly"]);
+  assert.deepEqual(module.events, ["borrowed"]);
   assert.equal(tokenizer.decode(Uint32Array.of(2, 3)), "€");
-  assert.deepEqual(module.events, ["assembly", "assembly"]);
+  assert.deepEqual(module.events, ["borrowed", "borrowed"]);
   assert.equal(tokenizer.decode(Uint32Array.of(2)), "�");
   assert.deepEqual(tokenizer.decodeBytes([2]), Uint8Array.of(0xe2));
   assert.equal(tokenizer.decodeStats().assemblyEnabled, true);
+  assert.equal(tokenizer.decodeStats().borrowedOutput, true);
   assert.equal(tokenizer.decodeStats().table, true);
   assert.equal(tokenizer.decodeStats().byteTable, false);
   assert.equal(tokenizer.decodeStats().mixedRuns, true);
@@ -92,6 +93,7 @@ test("auto decode reaches table, mixed runs, and the assembly refuge", async () 
   assert.equal(tokenizer.decodeStats().nativeLatin1, false);
   assert.equal(tokenizer.decodeStats().portableLatin1, false);
   assert.equal(tokenizer.decodeStats().leanDispatch, false);
+  assert.equal(tokenizer.decodeStats().directScratch, true);
   assert.equal(tokenizer.decodeStats().memo, true);
   assert.equal(tokenizer.decodeStats().tableState.mixedCalls, 3);
   assert.equal(tokenizer.decodeStats().tableState.mixedRunFallbackCalls, 1);
@@ -154,7 +156,11 @@ test("explicit maximal-run cache reuses only the complete dirty run", async () =
 
 test("explicit native Latin-1 decode routes dirty-dense bytes without assembly", async () => {
   module.events.length = 0;
-  const tokenizer = await runtime({ decodeMemo: "off", decodeLatin1Native: "on" });
+  const tokenizer = await runtime({
+    decodeMemo: "off",
+    decodeLatin1Native: "on",
+    decodeDirectScratch: "off",
+  });
   assert.equal(tokenizer.decode([2, 3]), "\u20ac");
   assert.equal(tokenizer.decode([2]), "\ufffd");
   assert.deepEqual(module.events, []);
@@ -166,7 +172,11 @@ test("explicit native Latin-1 decode routes dirty-dense bytes without assembly",
 
 test("explicit portable Latin-1 decode routes dirty-dense bytes without assembly", async () => {
   module.events.length = 0;
-  const tokenizer = await runtime({ decodeMemo: "off", decodeLatin1Portable: "on" });
+  const tokenizer = await runtime({
+    decodeMemo: "off",
+    decodeLatin1Portable: "on",
+    decodeDirectScratch: "off",
+  });
   assert.equal(tokenizer.decode([2, 3]), "\u20ac");
   assert.equal(tokenizer.decode([2]), "\ufffd");
   assert.deepEqual(module.events, []);
@@ -177,7 +187,7 @@ test("explicit portable Latin-1 decode routes dirty-dense bytes without assembly
 
 test("explicit fused validation reaches assembly with one natural-array conversion", async () => {
   module.events.length = 0;
-  const tokenizer = await runtime({ decodeFusedValidation: "on" });
+  const tokenizer = await runtime({ decodeFusedValidation: "on", decodeBorrowedOutput: "off" });
   assert.equal(tokenizer.decode([2, 3]), "\u20ac");
   assert.deepEqual(module.events, ["assembly"]);
   assert.equal(tokenizer.decodeStats().fusedValidation, true);
@@ -208,7 +218,11 @@ test("explicit borrowed output reaches the synchronous wasm view", async () => {
 
 test("explicit UTF-16 output reaches the copyable code-unit endpoint", async () => {
   module.events.length = 0;
-  const tokenizer = await runtime({ decodeMemo: "off", decodeUtf16Output: "on" });
+  const tokenizer = await runtime({
+    decodeMemo: "off",
+    decodeUtf16Output: "on",
+    decodeBorrowedOutput: "off",
+  });
   assert.equal(tokenizer.decode([2, 3]), "\u20ac");
   assert.deepEqual(module.events, ["utf16"]);
   assert.equal(tokenizer.decodeStats().utf16Output, true);
@@ -218,7 +232,11 @@ test("explicit UTF-16 output reaches the copyable code-unit endpoint", async () 
 
 test("explicit direct scratch reaches assembly without changing typed input routing", async () => {
   module.events.length = 0;
-  const tokenizer = await runtime({ decodeMemo: "off", decodeDirectScratch: "on" });
+  const tokenizer = await runtime({
+    decodeMemo: "off",
+    decodeDirectScratch: "on",
+    decodeBorrowedOutput: "off",
+  });
   const dense = [2, 3, 2, 3];
   assert.equal(tokenizer.decode(dense), "€€");
   assert.deepEqual(module.events, ["assembly"]);
@@ -263,7 +281,7 @@ test("explicit memo verifies content and preserves a reachable cache-off refuge"
 
 test("decodeTable off reaches assembly without the table", async () => {
   module.events.length = 0;
-  const tokenizer = await runtime({ decodeTable: "off" });
+  const tokenizer = await runtime({ decodeTable: "off", decodeBorrowedOutput: "off" });
   assert.equal(tokenizer.decode([0, 1]), "abc");
   assert.deepEqual(module.events, ["assembly"]);
   assert.equal(tokenizer.decodeStats().assemblyEnabled, true);

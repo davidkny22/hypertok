@@ -355,6 +355,10 @@ export async function runDecodeRoutePricing({
                       ? { decodeMemo: "off", decodeBorrowedOutput: "off" }
                       : candidateMode === "utf16-output"
                         ? { decodeMemo: "off", decodeUtf16Output: "off" }
+                        : candidateMode === "direct-borrowed"
+                          ? { decodeMemo: "off", decodeDirectScratch: "off", decodeBorrowedOutput: "off" }
+                          : candidateMode === "cut-direct" || candidateMode === "cut-borrowed"
+                            ? { decodeMemo: "off", decodeDirectScratch: "on", decodeBorrowedOutput: "on" }
           : { decodeMixedRuns: "off" },
   });
   const candidate = await fromBytes(bytes, {
@@ -385,6 +389,12 @@ export async function runDecodeRoutePricing({
                         ? { decodeMemo: "off", decodeBorrowedOutput: "on" }
                         : candidateMode === "utf16-output"
                           ? { decodeMemo: "off", decodeUtf16Output: "on" }
+                          : candidateMode === "direct-borrowed"
+                            ? { decodeMemo: "off", decodeDirectScratch: "on", decodeBorrowedOutput: "on" }
+                            : candidateMode === "cut-direct"
+                              ? { decodeMemo: "off", decodeDirectScratch: "off", decodeBorrowedOutput: "on" }
+                              : candidateMode === "cut-borrowed"
+                                ? { decodeMemo: "off", decodeDirectScratch: "on", decodeBorrowedOutput: "off" }
           : { decodeByteTable: "on" },
   });
   try {

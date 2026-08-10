@@ -17,7 +17,7 @@ const buildDefinitions = Object.freeze([
 const runtimeDefinitions = Object.freeze([
   Object.freeze(["decodeAssembly", true, "auto"]),
   Object.freeze(["decodeBoundary", false, "auto"]),
-  Object.freeze(["decodeBorrowedOutput", false, "off"]),
+  Object.freeze(["decodeBorrowedOutput", true, "auto"]),
   Object.freeze(["decodeUtf16Output", false, "off"]),
   Object.freeze(["decodeHotStrings", false, "auto"]),
   Object.freeze(["decodeTable", true, "auto"]),
@@ -29,7 +29,7 @@ const runtimeDefinitions = Object.freeze([
   Object.freeze(["decodeFusedValidation", true, "auto"]),
   Object.freeze(["decodeLeanDispatch", false, "off"]),
   Object.freeze(["decodeCleanUnroll", false, "off"]),
-  Object.freeze(["decodeDirectScratch", false, "off"]),
+  Object.freeze(["decodeDirectScratch", true, "auto"]),
   Object.freeze(["decodeMemo", true, "auto"]),
 ]);
 
@@ -151,7 +151,9 @@ export function resolveOptimizationConfig(value) {
     cleanUnroll:
       states.decodeCleanUnroll === "on" || admitted("decodeCleanUnroll"),
     directScratch:
-      mixedRuns && (states.decodeDirectScratch === "on" || admitted("decodeDirectScratch")),
+      mixedRuns &&
+      admitted("decodeTable") &&
+      (states.decodeDirectScratch === "on" || admitted("decodeDirectScratch")),
     memo: states.decodeMemo === "on" || admitted("decodeMemo"),
     raw: !assembly,
   });
