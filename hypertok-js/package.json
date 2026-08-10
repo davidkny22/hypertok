@@ -30,6 +30,7 @@
     "wasm",
     "README.md",
     "SHIMS.md",
+    "MIGRATING.md",
     "LICENSE",
     "NOTICE"
   ],
@@ -64,6 +65,7 @@
     "./wasm/single/hypertok_wasm_core_bg.wasm": "./wasm/single/hypertok_wasm_core_bg.wasm"
   },
   "scripts": {
+    "test": "node tests/run-quick.mjs",
     "build:package": "powershell -NoProfile -ExecutionPolicy Bypass -File build_package.ps1",
     "build:test:vite": "vite build --config tests/bundlers/vite.config.mjs",
     "build:test:webpack": "webpack --config tests/bundlers/webpack.config.mjs",

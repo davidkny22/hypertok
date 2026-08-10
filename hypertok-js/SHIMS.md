@@ -4,6 +4,9 @@ The two compatibility entry points preserve encode and decode call sites. They d
 vocabulary acquisition. Hypertok loads vocabulary bytes first, then constructs a shim around the
 resident runtime.
 
+For migration-shaped examples from js-tiktoken, gpt-tokenizer and Hugging Face tokenizers, see
+[MIGRATING.md](MIGRATING.md).
+
 Both shims are synchronous and require a resident `single` tier. Worker and shared tiers use the
 native asynchronous API. A shim cannot reach either faster tier or silently fall back to one.
 

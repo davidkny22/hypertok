@@ -69,6 +69,17 @@ const vocabPackOutput = run(process.execPath, [
 const vocabPacked = JSON.parse(vocabPackOutput);
 assert.equal(vocabPacked.length, 1);
 const vocabManifest = vocabPacked[0];
+const gpt2PackOutput = run(process.execPath, [
+  npmCli,
+  "pack",
+  path.join(root, "hypertok-vocab", "gpt2"),
+  "--pack-destination",
+  packDirectory,
+  "--json",
+]);
+const gpt2Packed = JSON.parse(gpt2PackOutput);
+assert.equal(gpt2Packed.length, 1);
+const gpt2Manifest = gpt2Packed[0];
 const packedPaths = new Set(manifest.files.map((entry) => entry.path.replaceAll("\\", "/")));
 assert.equal(
   [...packedPaths].filter((entry) => entry.startsWith("tests/") || entry.startsWith("results/")).length,
@@ -82,6 +93,7 @@ writeFileSync(
 );
 const tarball = path.join(packDirectory, manifest.filename);
 const vocabTarball = path.join(packDirectory, vocabManifest.filename);
+const gpt2Tarball = path.join(packDirectory, gpt2Manifest.filename);
 run(
   process.execPath,
   [
@@ -93,6 +105,7 @@ run(
     "--package-lock=false",
     tarball,
     vocabTarball,
+    gpt2Tarball,
   ],
   { cwd: installDirectory },
 );
@@ -133,6 +146,44 @@ await assert.rejects(
   (error) => error instanceof VocabIntegrityError
     && error.code === "ERR_HYPERTOK_VOCAB_INTEGRITY",
 );
+
+const migrationText = "hello 世界 👋";
+async function makeGpt2Runtime() {
+  return fromBytes(await loadVocab("gpt2"), { tier: "single" });
+}
+
+const jsTiktokenEncoding = createTiktokenShim(await makeGpt2Runtime(), { name: "gpt2" });
+const jsTiktokenIds = jsTiktokenEncoding.encode_ordinary(migrationText);
+const jsTiktokenDecoded = new TextDecoder().decode(jsTiktokenEncoding.decode(jsTiktokenIds));
+assert.equal(jsTiktokenDecoded, migrationText);
+jsTiktokenEncoding.free();
+
+const gptTokenizerEncoding = createTiktokenShim(await makeGpt2Runtime(), { name: "gpt2" });
+const encode = (value) => gptTokenizerEncoding.encode_ordinary(value);
+const decode = (tokens) => new TextDecoder().decode(gptTokenizerEncoding.decode(tokens));
+const gptTokenizerIds = encode(migrationText);
+assert.equal(decode(gptTokenizerIds), migrationText);
+gptTokenizerEncoding.free();
+
+const huggingFaceMigrationRuntime = await makeGpt2Runtime();
+const tokenDecoder = new TextDecoder();
+const huggingFaceMigration = createHuggingFaceShim(huggingFaceMigrationRuntime, {
+  tokenString: (id) => tokenDecoder.decode(huggingFaceMigrationRuntime.tokenBytes(id)),
+  postProcess: (first) => ({ ids: first }),
+  specialTokens: ["<|endoftext|>"],
+  unknownTokenId: 50256,
+  cleanUpTokenizationSpaces: false,
+});
+const huggingFaceMigrationEncoding = huggingFaceMigration.encode(migrationText, {
+  add_special_tokens: false,
+});
+assert.equal(
+  huggingFaceMigration.decode(huggingFaceMigrationEncoding.ids, {
+    clean_up_tokenization_spaces: false,
+  }),
+  migrationText,
+);
+huggingFaceMigration.free();
 const wasmBytes = await readFile(
   new URL(import.meta.resolve("hypertok/wasm/single/hypertok_wasm_core_bg.wasm")),
 );
@@ -190,6 +241,11 @@ console.log(JSON.stringify({
   tiktokenIds: tiktokenIds.length,
   huggingFaceIds: huggingFaceEncoding.ids.length,
   lazyHuggingFaceIds: lazyEncoding.ids.length,
+  migrationIds: {
+    jsTiktoken: jsTiktokenIds.length,
+    gptTokenizer: gptTokenizerIds.length,
+    huggingFace: huggingFaceMigrationEncoding.ids.length,
+  },
   sentencePieceIds: sentencePieceDetailed.ids.length,
   sentencePieceStarts: Array.from(sentencePieceDetailed.starts),
 }));
