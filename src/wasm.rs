@@ -723,6 +723,13 @@ impl WasmTokenizer {
         Ok(unsafe { js_sys::Uint8Array::view(output) })
     }
 
+    #[cfg(feature = "opt-decode-utf16-output")]
+    #[wasm_bindgen(js_name = decodeAssemblyUtf16)]
+    pub fn decode_assembly_utf16(&self, ids: &[u32]) -> Result<Vec<u16>, JsError> {
+        let bytes = gather_decode_bytes(&self.tokenizer, &self.token_lengths, ids)?;
+        Ok(String::from_utf8_lossy(&bytes).encode_utf16().collect())
+    }
+
     #[cfg(feature = "opt-decode-boundary")]
     #[wasm_bindgen(js_name = residentDecodeIdsView)]
     pub fn resident_decode_ids_view(&self) -> js_sys::Uint32Array {

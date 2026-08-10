@@ -16,6 +16,7 @@
     "src/decode-memo.mjs",
     "src/decode-run-cache.mjs",
     "src/decode-table.mjs",
+    "src/decode-utf16.mjs",
     "src/huggingface-shim.mjs",
     "src/huggingface-lazy-shim.mjs",
     "src/index-edge.mjs",

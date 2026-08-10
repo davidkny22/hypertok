@@ -32,6 +32,11 @@ export class WasmTokenizer {
   decode(ids) { events.push("raw"); return decoder.decode(gather(ids)); }
   decodeAssemblyBytes(ids) { events.push("assembly"); return gather(ids); }
   decodeBorrowedAssemblyView(ids) { events.push("borrowed"); return gather(ids); }
+  decodeAssemblyUtf16(ids) {
+    events.push("utf16");
+    const text = decoder.decode(gather(ids));
+    return Uint16Array.from({ length: text.length }, (_, index) => text.charCodeAt(index));
+  }
   tokenBytes(id) {
     const bytes = entries[id];
     if (!(bytes instanceof Uint8Array)) throw new RangeError("unknown token id " + id);
@@ -198,6 +203,16 @@ test("explicit borrowed output reaches the synchronous wasm view", async () => {
   assert.deepEqual(module.events, ["borrowed"]);
   assert.equal(tokenizer.decodeStats().borrowedOutput, true);
   assert.equal(tokenizer.decodeStats().assembly.borrowedViewCalls, 1);
+  await tokenizer.close();
+});
+
+test("explicit UTF-16 output reaches the copyable code-unit endpoint", async () => {
+  module.events.length = 0;
+  const tokenizer = await runtime({ decodeMemo: "off", decodeUtf16Output: "on" });
+  assert.equal(tokenizer.decode([2, 3]), "\u20ac");
+  assert.deepEqual(module.events, ["utf16"]);
+  assert.equal(tokenizer.decodeStats().utf16Output, true);
+  assert.equal(tokenizer.decodeStats().assembly.utf16Calls, 1);
   await tokenizer.close();
 });
 

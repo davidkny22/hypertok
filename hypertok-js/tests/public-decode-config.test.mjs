@@ -41,6 +41,17 @@ function dirtyFixture(handle) {
   };
 }
 
+function singleByteIds(handle, values) {
+  const wanted = new Set(values);
+  const ids = new Map();
+  for (let id = 0; id < handle.vocabSize && ids.size < wanted.size; id += 1) {
+    const bytes = handle.tokenBytes(id);
+    if (bytes.length === 1 && wanted.has(bytes[0])) ids.set(bytes[0], id);
+  }
+  assert.equal(ids.size, wanted.size);
+  return ids;
+}
+
 test("public automatic decode reaches the routed table and sparse mixed path", async () => {
   const { handle, runtime } = await loaded();
   try {
@@ -241,6 +252,41 @@ test("public borrowed output decodes the packaged wasm view synchronously", asyn
     assert.equal(stats.borrowedOutput, true);
     assert.ok(stats.assembly.borrowedViewCalls >= 3);
     assert.equal(typeof handle.decode(fixture.ids), "string");
+  } finally {
+    handle.free();
+  }
+});
+
+test("public UTF-16 output preserves exact dense decode through the packaged wasm", async () => {
+  const { handle, runtime } = await loaded({ decodeMemo: "off", decodeUtf16Output: "on" });
+  try {
+    const fixture = dirtyFixture(handle);
+    assert.equal(handle.decode(fixture.ids), fixture.text);
+    const expandedIds = Array.from(
+      { length: fixture.ids.length * 64 },
+      (_, index) => fixture.ids[index % fixture.ids.length],
+    );
+    assert.equal(handle.decode(expandedIds), fixture.text.repeat(64));
+    const byteIds = singleByteIds(handle, [0x28, 0x80, 0x82, 0xac, 0xc3, 0xe2, 0xef, 0xbb, 0xbf, 0xf0, 0xff]);
+    for (const bytes of [
+      [0xc3],
+      [0xe2, 0x82],
+      [0xf0, 0x80],
+      [0xff],
+      [0xc3, 0x28],
+      [0xe2, 0x82, 0xac],
+    ]) {
+      const ids = bytes.map((value) => byteIds.get(value));
+      assert.equal(handle.decode(ids), new TextDecoder().decode(Uint8Array.from(bytes)));
+    }
+    assert.equal(
+      handle.decode([byteIds.get(0xef), byteIds.get(0xbb), byteIds.get(0xbf), byteIds.get(0x28)]),
+      "\ufeff(",
+    );
+    assert.equal(typeof handle.decode(fixture.ids), "string");
+    const stats = runtime.decodeStats();
+    assert.equal(stats.utf16Output, true);
+    assert.ok(stats.assembly.utf16Calls >= 3);
   } finally {
     handle.free();
   }

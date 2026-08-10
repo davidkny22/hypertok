@@ -4,6 +4,7 @@ import { createBoundaryDecoder } from "./decode-boundary.mjs";
 import { createHotStringDecoder } from "./decode-hotstrings.mjs";
 import { createDecodeMemo } from "./decode-memo.mjs";
 import { createDecodeTable } from "./decode-table.mjs";
+import { createUtf16AssemblyDecoder } from "./decode-utf16.mjs";
 
 function requiredCore(core) {
   if (
@@ -51,6 +52,7 @@ export function createComposedDecoder(core, options = {}) {
   const useAssembly = options.assembly !== false;
   const useBoundary = options.boundary === true;
   const useBorrowedOutput = options.borrowedOutput === true;
+  const useUtf16Output = options.utf16Output === true;
   const useTable = options.table === true;
   const useByteTable = options.byteTable === true;
   const useMixedRuns = options.mixedRuns === true;
@@ -68,6 +70,12 @@ export function createComposedDecoder(core, options = {}) {
   }
   if (useBorrowedOutput && !useAssembly) {
     throw new TypeError("borrowed output decode requires assembly decode");
+  }
+  if (useUtf16Output && !useAssembly) {
+    throw new TypeError("UTF-16 output decode requires assembly decode");
+  }
+  if (useBorrowedOutput && useUtf16Output) {
+    throw new TypeError("borrowed output and UTF-16 output decode cannot both be on");
   }
   if (useByteTable && !useTable) {
     throw new TypeError("byte-table decode requires table decode");
@@ -89,7 +97,9 @@ export function createComposedDecoder(core, options = {}) {
     stats: () => Object.freeze({ decoderCalls: 0 }),
   });
   const assembly = useAssembly
-    ? useBorrowedOutput
+    ? useUtf16Output
+      ? createUtf16AssemblyDecoder(core)
+      : useBorrowedOutput
       ? createBorrowedAssemblyDecoder(core)
       : useBoundary
         ? createBoundaryDecoder(core)
@@ -137,6 +147,7 @@ export function createComposedDecoder(core, options = {}) {
       assemblyEnabled: useAssembly,
       boundary: useBoundary,
       borrowedOutput: useBorrowedOutput,
+      utf16Output: useUtf16Output,
       table: useTable,
       byteTable: useByteTable,
       mixedRuns: useMixedRuns,

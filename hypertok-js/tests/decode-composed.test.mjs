@@ -33,6 +33,10 @@ function coreFixture() {
     decode: (ids) => decoder.decode(gather(ids)),
     decodeAssemblyBytes: gather,
     decodeBorrowedAssemblyView: gather,
+    decodeAssemblyUtf16: (ids) => {
+      const text = decoder.decode(gather(ids));
+      return Uint16Array.from({ length: text.length }, (_, index) => text.charCodeAt(index));
+    },
     residentDecodeIdsCapacity: () => resident.length,
     residentDecodeIdsHighWater: () => resident.length,
     residentDecodeIdsView: () => resident,
@@ -60,6 +64,7 @@ for (const configuration of [
   { assembly: false, boundary: false, table: false, hotStrings: false },
   { boundary: true, table: false, hotStrings: false },
   { boundary: false, borrowedOutput: true, table: false, hotStrings: false },
+  { boundary: false, utf16Output: true, table: false, hotStrings: false },
   { boundary: false, table: true, hotStrings: false },
   { boundary: false, table: true, byteTable: true, hotStrings: false },
   { boundary: false, table: true, mixedRuns: true, hotStrings: false },
@@ -85,6 +90,7 @@ for (const configuration of [
     assert.throws(() => composed.decode(Uint32Array.of(9)), /unknown token id/);
     assert.equal(composed.stats().boundary, configuration.boundary);
     assert.equal(composed.stats().borrowedOutput, configuration.borrowedOutput === true);
+    assert.equal(composed.stats().utf16Output, configuration.utf16Output === true);
     assert.equal(composed.stats().table, configuration.table);
     assert.equal(composed.stats().byteTable, configuration.byteTable === true);
     assert.equal(composed.stats().mixedRuns, configuration.mixedRuns === true);
@@ -130,6 +136,14 @@ test("validates the composed core and options", () => {
   assert.throws(
     () => createComposedDecoder(coreFixture(), { assembly: false, borrowedOutput: true }),
     /borrowed output decode requires assembly/,
+  );
+  assert.throws(
+    () => createComposedDecoder(coreFixture(), { assembly: false, utf16Output: true }),
+    /UTF-16 output decode requires assembly/,
+  );
+  assert.throws(
+    () => createComposedDecoder(coreFixture(), { borrowedOutput: true, utf16Output: true }),
+    /cannot both be on/,
   );
   assert.throws(
     () => createComposedDecoder(coreFixture(), { table: false, byteTable: true }),

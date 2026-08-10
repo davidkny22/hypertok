@@ -18,6 +18,7 @@ const runtimeDefinitions = Object.freeze([
   Object.freeze(["decodeAssembly", true, "auto"]),
   Object.freeze(["decodeBoundary", false, "auto"]),
   Object.freeze(["decodeBorrowedOutput", false, "off"]),
+  Object.freeze(["decodeUtf16Output", false, "off"]),
   Object.freeze(["decodeHotStrings", false, "auto"]),
   Object.freeze(["decodeTable", true, "auto"]),
   Object.freeze(["decodeByteTable", false, "off"]),
@@ -52,6 +53,7 @@ const buildFeatures = Object.freeze([
     .map(([, feature]) => feature),
   "opt-decode-assembly",
   "opt-decode-borrowed-output",
+  "opt-decode-utf16-output",
 ]);
 
 function configurationObject(value) {
@@ -81,6 +83,7 @@ export function resolveOptimizationConfig(value) {
     const candidate =
       key === "decodeByteTable" ||
       key === "decodeBorrowedOutput" ||
+      key === "decodeUtf16Output" ||
       key === "decodeMixedRuns" ||
       key === "decodeRunCache" ||
       key === "decodeLatin1Native" ||
@@ -106,6 +109,9 @@ export function resolveOptimizationConfig(value) {
   if (states.decodeByteTable === "on" && states.decodeMixedRuns === "on") {
     throw new TypeError("decodeByteTable and decodeMixedRuns cannot both be on");
   }
+  if (states.decodeBorrowedOutput === "on" && states.decodeUtf16Output === "on") {
+    throw new TypeError("decodeBorrowedOutput and decodeUtf16Output cannot both be on");
+  }
   const byteTable = assembly && (states.decodeByteTable === "on" || admitted("decodeByteTable"));
   const mixedRuns =
     assembly &&
@@ -117,6 +123,9 @@ export function resolveOptimizationConfig(value) {
     borrowedOutput:
       assembly &&
       (states.decodeBorrowedOutput === "on" || admitted("decodeBorrowedOutput")),
+    utf16Output:
+      assembly &&
+      (states.decodeUtf16Output === "on" || admitted("decodeUtf16Output")),
     hotStrings: assembly && admitted("decodeHotStrings"),
     table: assembly && admitted("decodeTable"),
     byteTable: byteTable && admitted("decodeTable"),

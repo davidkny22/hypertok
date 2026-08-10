@@ -353,6 +353,8 @@ export async function runDecodeRoutePricing({
                     ? { decodeMemo: "off", decodeCleanUnroll: "off" }
                     : candidateMode === "borrowed-output"
                       ? { decodeMemo: "off", decodeBorrowedOutput: "off" }
+                      : candidateMode === "utf16-output"
+                        ? { decodeMemo: "off", decodeUtf16Output: "off" }
           : { decodeMixedRuns: "off" },
   });
   const candidate = await fromBytes(bytes, {
@@ -381,6 +383,8 @@ export async function runDecodeRoutePricing({
                       ? { decodeMemo: "off", decodeCleanUnroll: "on" }
                       : candidateMode === "borrowed-output"
                         ? { decodeMemo: "off", decodeBorrowedOutput: "on" }
+                        : candidateMode === "utf16-output"
+                          ? { decodeMemo: "off", decodeUtf16Output: "on" }
           : { decodeByteTable: "on" },
   });
   try {

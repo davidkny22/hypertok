@@ -6,6 +6,7 @@ export interface OptimizationOptions {
   decodeAssembly?: OptimizationState;
   decodeBoundary?: OptimizationState;
   decodeBorrowedOutput?: CandidateOptimizationState;
+  decodeUtf16Output?: CandidateOptimizationState;
   decodeHotStrings?: OptimizationState;
   decodeTable?: OptimizationState;
   decodeByteTable?: CandidateOptimizationState;
