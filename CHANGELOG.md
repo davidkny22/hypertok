@@ -2,6 +2,14 @@
 
 All notable public changes are recorded here.
 
+## 0.3.5
+
+- Speed up dirty-token decode with reusable validated ID storage and synchronous consumption of
+  borrowed WebAssembly output, while retaining copied-output and explicit-off refuges.
+- Lead the quickstart with installed vocabulary loading on Node and retain the browser asset-fetch
+  flow immediately after it.
+- Refuse unavailable vocabulary package names before local reads or CDN requests.
+
 ## 0.3.4
 
 - Verify CDN-fetched vocabulary bytes against their pinned SHA-256 metadata and raise a typed

@@ -89,6 +89,8 @@ async function sentencePieceRuntime(bytes, options, moduleSource) {
     ...decodeConfiguration,
     assembly: false,
     boundary: false,
+    borrowedOutput: false,
+    utf16Output: false,
     hotStrings: false,
     table: false,
     byteTable: false,
