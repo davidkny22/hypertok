@@ -1,6 +1,6 @@
 {
   "name": "hypertok",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "The fastest tokenizer on the web. Exact token ids for any BPE or SentencePiece vocabulary, in browsers and Node.",
   "type": "module",
   "license": "MIT",

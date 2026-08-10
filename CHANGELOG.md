@@ -2,6 +2,15 @@
 
 All notable public changes are recorded here.
 
+## 0.3.4
+
+- Verify CDN-fetched vocabulary bytes against their pinned SHA-256 metadata and raise a typed
+  integrity error on mismatch.
+- Add real Deno CLI coverage for public construction and exact encode-decode round trips.
+- Add a default test command, private vulnerability reporting guidance and executable migration
+  examples for the supported compatibility shims.
+- Declare the intentional ESM-only and binary-asset findings in package type audits.
+
 ## 0.3.3
 
 - Fixed tiktoken and Hugging Face shim construction when automatic selection uses a worker or
