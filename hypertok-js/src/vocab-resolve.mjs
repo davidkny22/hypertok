@@ -13,7 +13,6 @@ export const VOCAB_VERSIONS = Object.freeze({
   "gpt2": "1.0.0",
   "kimi-k3": "1.0.0",
   "llama3": "1.0.0",
-  "minimax-m3": "1.0.0",
   "mistral-tekken": "1.0.0",
   "nemotron3": "1.0.0",
   "o200k": "1.0.0",

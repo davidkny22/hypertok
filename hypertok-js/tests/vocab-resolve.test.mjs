@@ -115,3 +115,26 @@ test("rejects unknown vocabularies and unsafe asset names", async () => {
   await assert.rejects(() => load("p50k", { file: "../vocab.htk" }), /package-root/);
   await assert.rejects(() => load("p50k", { timeoutMs: 0 }), /positive number/);
 });
+
+test("rejects unavailable vocabularies before local or CDN access", async () => {
+  let localReads = 0;
+  let fetches = 0;
+  const load = createVocabLoader({
+    async readLocal() {
+      localReads += 1;
+      return Uint8Array.of(1);
+    },
+    async fetch() {
+      fetches += 1;
+      return { ok: true, arrayBuffer: async () => Uint8Array.of(1).buffer };
+    },
+  });
+  for (const name of ["minimax-m3", "@hypertok/vocab-minimax-m3"]) {
+    await assert.rejects(
+      () => load(name),
+      (error) => error instanceof RangeError && /unknown hypertok vocabulary/.test(error.message),
+    );
+  }
+  assert.equal(localReads, 0);
+  assert.equal(fetches, 0);
+});
