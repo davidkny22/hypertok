@@ -15,6 +15,34 @@ pub struct ValidatedFile<'a> {
 
 impl<'a> ValidatedFile<'a> {
     pub fn read(bytes: &'a [u8]) -> Result<Self, ReadError> {
+        let file = Self::read_bounded(bytes)?;
+        file.validate_pretok()?;
+        file.validate_norm()?;
+        file.validate_decoder()?;
+        file.validate_post()?;
+        file.validate_unk()?;
+        file.validate_base()?;
+        file.validate_byte_fallback()?;
+        let specials = file.validate_specials()?;
+        file.validate_lengths(&specials)?;
+        file.validate_priority()?;
+
+        if compute_digest(bytes) != file.header.digest {
+            return Err(ReadError::DigestMismatch);
+        }
+        Ok(file)
+    }
+
+    /// Parse only the bounds needed to access resolver-owned immutable bytes safely.
+    ///
+    /// The caller must establish provenance independently. This path does not verify content,
+    /// section semantics, or digests.
+    #[cfg(feature = "resolver-provenance")]
+    pub fn read_resolver_trusted(bytes: &'a [u8]) -> Result<Self, ReadError> {
+        Self::read_bounded(bytes)
+    }
+
+    fn read_bounded(bytes: &'a [u8]) -> Result<Self, ReadError> {
         let header = read_header(bytes)?;
         let table_start = header.section_table_offset as usize;
         let table_len = (header.section_count as usize)
@@ -51,26 +79,11 @@ impl<'a> ValidatedFile<'a> {
         validate_presence(header.structural_class, &sections)?;
         validate_section_ranges(bytes.len(), table_start, table_end, &sections)?;
 
-        let file = Self {
+        Ok(Self {
             bytes,
             header,
             sections,
-        };
-        file.validate_pretok()?;
-        file.validate_norm()?;
-        file.validate_decoder()?;
-        file.validate_post()?;
-        file.validate_unk()?;
-        file.validate_base()?;
-        file.validate_byte_fallback()?;
-        let specials = file.validate_specials()?;
-        file.validate_lengths(&specials)?;
-        file.validate_priority()?;
-
-        if compute_digest(bytes) != header.digest {
-            return Err(ReadError::DigestMismatch);
-        }
-        Ok(file)
+        })
     }
 
     pub const fn header(&self) -> &Header {

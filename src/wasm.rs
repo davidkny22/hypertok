@@ -3,8 +3,10 @@ use crate::bpe::Tokenizer;
 use crate::decode_profiling::{DecodeProfileClock, DecodeProfileSnapshot};
 #[cfg(feature = "source-loaders")]
 use crate::load_tokenizer::hf::{HfTokenizer, load_hf_slice};
+#[cfg(feature = "opt-resolver-provenance")]
+use crate::load_tokenizer::htk::load_resolver_trusted_htk_slice;
 #[cfg(feature = "htk")]
-use crate::load_tokenizer::htk::{HtkTokenizer, load_htk_slice};
+use crate::load_tokenizer::htk::{HtkTokenizer, LoadedHtk, load_htk_slice};
 #[cfg(feature = "htk")]
 use crate::load_tokenizer::htk_chunk::{
     ChunkConfig, OverlapReconciliation, encode_overlap, overlap_ranges,
@@ -83,6 +85,8 @@ pub struct WasmTokenizer {
     chunk_telemetry: [u32; 5],
     #[cfg(feature = "htk")]
     worker_model: Option<Arc<HtkWorkerModel>>,
+    #[cfg(feature = "opt-resolver-provenance")]
+    resolver_worker_image: Option<Box<[u8]>>,
     #[cfg(feature = "htk")]
     worker_unsupported_patterns: Arc<[Box<[u8]>]>,
     #[cfg(feature = "htk")]
@@ -197,6 +201,8 @@ impl WasmTokenizer {
                 chunking_available,
                 chunk_telemetry: [0; 5],
                 worker_model: None,
+                #[cfg(feature = "opt-resolver-provenance")]
+                resolver_worker_image: None,
                 worker_unsupported_patterns: Arc::from([]),
                 reserved_catalog: HtkReservedCatalog::new(Vec::<HtkReservedDefinition>::new()),
                 reserved_byte_cache: HashMap::with_hasher(FxBuildHasher),
@@ -265,6 +271,21 @@ impl WasmTokenizer {
     pub fn from_htk(data: &[u8]) -> Result<WasmTokenizer, JsError> {
         crate::cold_construction::begin();
         let loaded = load_htk_slice(data).map_err(js_error)?;
+        Self::from_loaded_htk(loaded)
+    }
+
+    #[cfg(feature = "opt-resolver-provenance")]
+    #[wasm_bindgen(js_name = fromResolverTrustedHtk)]
+    pub fn from_resolver_trusted_htk(data: &[u8]) -> Result<WasmTokenizer, JsError> {
+        crate::cold_construction::begin();
+        let loaded = load_resolver_trusted_htk_slice(data).map_err(js_error)?;
+        Self::from_loaded_htk(loaded)
+    }
+
+    #[cfg(feature = "htk")]
+    fn from_loaded_htk(loaded: LoadedHtk) -> Result<WasmTokenizer, JsError> {
+        #[cfg(feature = "opt-resolver-provenance")]
+        let resolver_worker_image = loaded.resolver_worker_image;
         let tokenizer = match loaded.tokenizer {
             HtkTokenizer::ByteBpe(tokenizer) => tokenizer,
             #[cfg(any(feature = "sentencepiece", feature = "sentencepiece-core"))]
@@ -333,6 +354,8 @@ impl WasmTokenizer {
             chunking_available,
             chunk_telemetry: [0; 5],
             worker_model,
+            #[cfg(feature = "opt-resolver-provenance")]
+            resolver_worker_image,
             worker_unsupported_patterns: loaded.worker_unsupported_patterns.into(),
             reserved_catalog: loaded.reserved_catalog,
             reserved_byte_cache: loaded.reserved_byte_cache,
@@ -1416,6 +1439,10 @@ impl WasmTokenizer {
     #[cfg(feature = "htk")]
     #[wasm_bindgen(js_name = exportWorkerImage)]
     pub fn export_worker_image(&self) -> Result<Vec<u8>, JsError> {
+        #[cfg(feature = "opt-resolver-provenance")]
+        if let Some(image) = &self.resolver_worker_image {
+            return Ok(image.to_vec());
+        }
         self.worker_model
             .as_ref()
             .map(|model| model.to_bytes())

@@ -286,6 +286,58 @@ impl FingerprintTable {
         })
     }
 
+    /// Import resolver-owned immutable bytes with structural bounds checks only.
+    #[cfg(feature = "resolver-provenance")]
+    pub fn from_resolver_trusted_bytes(bytes: &[u8]) -> Result<Self, TableImageError> {
+        if bytes.len() < 16 {
+            return Err(TableImageError::Truncated);
+        }
+        if &bytes[0..4] != b"HTFT" {
+            return Err(TableImageError::BadMagic);
+        }
+        let version = u16::from_le_bytes([bytes[4], bytes[5]]);
+        if version != 1 {
+            return Err(TableImageError::UnsupportedVersion(version));
+        }
+        let load_permille = u16::from_le_bytes([bytes[6], bytes[7]]);
+        if !(1..1000).contains(&load_permille) {
+            return Err(TableImageError::InvalidLoadPermille(load_permille));
+        }
+        let key_count = u32::from_le_bytes(bytes[8..12].try_into().expect("fixed field"));
+        let slot_count_u32 = u32::from_le_bytes(bytes[12..16].try_into().expect("fixed field"));
+        let slot_count =
+            usize::try_from(slot_count_u32).map_err(|_| TableImageError::SizeOverflow)?;
+        let expected_length = slot_count
+            .checked_mul(size_of::<Slot>())
+            .and_then(|length| length.checked_add(16))
+            .ok_or(TableImageError::SizeOverflow)?;
+        if bytes.len() != expected_length {
+            return Err(TableImageError::LengthMismatch);
+        }
+        let canonical_count = usize::try_from(key_count)
+            .map_err(|_| TableImageError::SizeOverflow)?
+            .checked_mul(1000)
+            .ok_or(TableImageError::SizeOverflow)?
+            .div_ceil(load_permille as usize);
+        if slot_count != canonical_count {
+            return Err(TableImageError::NonCanonicalSlotCount);
+        }
+        let slots = bytes[16..]
+            .chunks_exact(size_of::<Slot>())
+            .map(|raw| Slot {
+                id_plus_one: u32::from_le_bytes(raw[0..4].try_into().expect("fixed slot field")),
+                displacement: u16::from_le_bytes(raw[4..6].try_into().expect("fixed slot field")),
+                fingerprint: raw[6],
+                occupied: raw[7],
+            })
+            .collect();
+        Ok(Self {
+            slots,
+            key_count,
+            load_permille,
+        })
+    }
+
     fn insert(&mut self, key: TableKey<'_>) -> Result<(), TableBuildError> {
         let mut position = map64(table_hash(key.bytes), self.slots.len());
         let mut incoming = Slot {

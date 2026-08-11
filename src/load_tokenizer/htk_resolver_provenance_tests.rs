@@ -1,10 +1,6 @@
-#![cfg(feature = "opt-prebuilt-built-state")]
-
-use hypertok::load_tokenizer::htk::{
-    PREBUILT_BUILT_STATE_SECTION_ID, build_prebuilt_built_state_image, load_htk_slice,
-};
+use super::*;
 use hypertok_converter::{Document, Section, write};
-use hypertok_format::{DIGEST_RANGE, SectionId, ValidatedFile, compute_digest};
+use hypertok_format::{DIGEST_RANGE, SectionId};
 
 fn tracked(path: &str) -> Vec<u8> {
     std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path))
@@ -42,11 +38,12 @@ fn with_prebuilt_built_state(source: &[u8]) -> Vec<u8> {
 }
 
 #[test]
-fn prebuilt_built_state_preserves_runtime_behavior() {
+fn resolver_provenance_preserves_exact_runtime_behavior() {
     let source = tracked("hypertok-vocab/gpt2/vocab.htk");
     let candidate = with_prebuilt_built_state(&source);
     let mut reference = load_htk_slice(&source).expect("load source vocabulary");
-    let mut prebuilt = load_htk_slice(&candidate).expect("load built-state vocabulary");
+    let mut trusted =
+        load_resolver_trusted_htk_slice(&candidate).expect("load resolver-owned vocabulary");
     for text in [
         "Plain prose with punctuation.",
         "const answer = (x) => x * 42;\n",
@@ -55,40 +52,24 @@ fn prebuilt_built_state_preserves_runtime_behavior() {
         " \t\n\n\u{feff} boundary ",
     ] {
         let expected = reference.tokenizer.encode(text);
-        let actual = prebuilt.tokenizer.encode(text);
+        let actual = trusted.tokenizer.encode(text);
         assert_eq!(actual, expected, "encode parity for {text:?}");
-        assert_eq!(prebuilt.tokenizer.decode(&actual), text.as_bytes());
+        assert_eq!(trusted.tokenizer.decode(&actual), text.as_bytes());
     }
 }
 
 #[test]
-fn digest_valid_built_state_corruption_is_refused() {
+fn only_resolver_provenance_bypasses_the_file_digest() {
     let source = tracked("hypertok-vocab/gpt2/vocab.htk");
     let mut candidate = with_prebuilt_built_state(&source);
-    let entry = *ValidatedFile::read(&candidate)
-        .expect("validate candidate")
-        .section_entry(PREBUILT_BUILT_STATE_SECTION_ID)
-        .expect("built-state section");
-    let start = entry.offset as usize;
-    let end = start + entry.length as usize;
-    let lookup_len = u32::from_le_bytes(
-        candidate[start + 20..start + 24]
-            .try_into()
-            .expect("lookup length field"),
-    ) as usize;
-    let worker_len = u32::from_le_bytes(
-        candidate[start + 24..start + 28]
-            .try_into()
-            .expect("worker-image length field"),
-    ) as usize;
-    let first_pair_slot = start + 64 + lookup_len + worker_len;
-    candidate[first_pair_slot..first_pair_slot + 4].copy_from_slice(&u32::MAX.to_le_bytes());
-    let section_digest = compute_digest(&candidate[start..end]);
-    candidate[start + 32..start + 64].copy_from_slice(&section_digest);
-    let file_digest = compute_digest(&candidate);
-    candidate[DIGEST_RANGE].copy_from_slice(&file_digest);
+    candidate[DIGEST_RANGE.start] ^= 1;
     assert!(
         load_htk_slice(&candidate).is_err(),
-        "digest-valid slot corruption must remain on the untrusted refusal path"
+        "arbitrary bytes must retain digest refusal"
     );
+    let mut trusted =
+        load_resolver_trusted_htk_slice(&candidate).expect("resolver provenance skips hashing");
+    let text = "resolver-owned bytes remain exact";
+    let ids = trusted.tokenizer.encode(text);
+    assert_eq!(trusted.tokenizer.decode(&ids), text.as_bytes());
 }

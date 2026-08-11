@@ -322,6 +322,51 @@ impl PairRankTable {
         }
     }
 
+    #[cfg(feature = "opt-resolver-provenance")]
+    pub(crate) fn from_resolver_trusted_slots(
+        slot_count: usize,
+        entries: &[(u32, u64)],
+        byte_remapping: Option<&ByteRemapping>,
+        vocab_len: usize,
+    ) -> Result<Self, &'static str> {
+        #[cfg(feature = "opt-compact-ranks")]
+        {
+            let _ = (slot_count, entries, byte_remapping, vocab_len);
+            return Err("prebuilt pair slots require flat pair ranks");
+        }
+
+        #[cfg(not(feature = "opt-compact-ranks"))]
+        {
+            let mut table = crate::cold_construction::measure("pair-table-allocation", || {
+                Self::with_capacity(byte_remapping, vocab_len, entries.len())
+            })
+            .ok_or("prebuilt pair slots exceed table capacity")?;
+            if table.slots.len() != slot_count {
+                return Err("prebuilt pair slot count is not canonical");
+            }
+            let id_mask = (1_u64 << PAIR_ID_BITS) - 1;
+            crate::cold_construction::measure("pair-slot-import", || {
+                for &(slot, packed) in entries {
+                    let target = table
+                        .slots
+                        .get_mut(slot as usize)
+                        .ok_or("prebuilt pair slot is out of bounds")?;
+                    *target = packed;
+                    let merged = (packed & id_mask) as u32;
+                    let key = packed >> PAIR_ID_BITS;
+                    let left = (key >> PAIR_ID_BITS) as u32;
+                    let right = (key & id_mask) as u32;
+                    if (left | right) >> table.dense_log2 == 0 {
+                        table.dense[((left as usize) << table.dense_log2) | right as usize] =
+                            merged;
+                    }
+                }
+                Ok::<_, &'static str>(())
+            })?;
+            Ok(table)
+        }
+    }
+
     #[cfg(feature = "opt-prebuilt-built-state")]
     pub(crate) fn prebuilt_slot_image(&self) -> Option<(usize, Vec<(u32, u64)>)> {
         #[cfg(feature = "opt-compact-ranks")]

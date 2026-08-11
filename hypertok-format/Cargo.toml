@@ -5,6 +5,9 @@ edition = "2024"
 license = "MIT"
 publish = false
 
+[features]
+resolver-provenance = []
+
 [dependencies]
 sha2 = "=0.10.9"
 

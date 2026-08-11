@@ -18,6 +18,7 @@ impl PrebuiltPairSlots {
 
 pub(crate) struct PrebuiltBuiltState {
     lookup_image: Box<[u8]>,
+    worker_image: Box<[u8]>,
     pair_slots: PrebuiltPairSlots,
 }
 
@@ -25,6 +26,7 @@ impl PrebuiltBuiltState {
     pub(crate) fn to_bytes(
         vocab_size: u32,
         lookup_image: &[u8],
+        worker_image: &[u8],
         pair_slot_count: usize,
         pair_entries: &[(u32, u64)],
     ) -> Result<Vec<u8>, WorkerImageError> {
@@ -34,8 +36,12 @@ impl PrebuiltBuiltState {
             u32::try_from(pair_entries.len()).map_err(|_| WorkerImageError::LengthOverflow)?;
         let lookup_len =
             u32::try_from(lookup_image.len()).map_err(|_| WorkerImageError::LengthOverflow)?;
+        let worker_len =
+            u32::try_from(worker_image.len()).map_err(|_| WorkerImageError::LengthOverflow)?;
         let payload_len = lookup_image
             .len()
+            .checked_add(worker_image.len())
+            .ok_or(WorkerImageError::LengthOverflow)?
             .checked_add(
                 pair_entries
                     .len()
@@ -50,8 +56,10 @@ impl PrebuiltBuiltState {
         bytes[12..16].copy_from_slice(&slot_count.to_le_bytes());
         bytes[16..20].copy_from_slice(&entry_count.to_le_bytes());
         bytes[20..24].copy_from_slice(&lookup_len.to_le_bytes());
+        bytes[24..28].copy_from_slice(&worker_len.to_le_bytes());
         bytes.reserve(payload_len);
         bytes.extend_from_slice(lookup_image);
+        bytes.extend_from_slice(worker_image);
         for &(slot, packed) in pair_entries {
             bytes.extend_from_slice(&slot.to_le_bytes());
             bytes.extend_from_slice(&packed.to_le_bytes());
@@ -77,7 +85,7 @@ impl PrebuiltBuiltState {
         }
         if bytes[6..8]
             .iter()
-            .chain(&bytes[24..32])
+            .chain(&bytes[28..32])
             .any(|byte| *byte != 0)
         {
             return Err(WorkerImageError::NonZeroReserved);
@@ -89,8 +97,10 @@ impl PrebuiltBuiltState {
         let slot_count = read_count(bytes, 12)?;
         let entry_count = read_count(bytes, 16)?;
         let lookup_len = read_count(bytes, 20)?;
+        let worker_len = read_count(bytes, 24)?;
         let expected_len = BUILT_STATE_HEADER_LEN
             .checked_add(lookup_len)
+            .and_then(|length| length.checked_add(worker_len))
             .and_then(|length| length.checked_add(entry_count.checked_mul(PAIR_RECORD_LEN)?))
             .ok_or(WorkerImageError::LengthOverflow)?;
         if bytes.len() != expected_len || compute_digest(bytes) != bytes[32..64] {
@@ -98,6 +108,9 @@ impl PrebuiltBuiltState {
         }
         let mut cursor = BUILT_STATE_HEADER_LEN;
         let lookup_image = take(bytes, &mut cursor, lookup_len)?
+            .to_vec()
+            .into_boxed_slice();
+        let worker_image = take(bytes, &mut cursor, worker_len)?
             .to_vec()
             .into_boxed_slice();
         let mut entries = Vec::with_capacity(entry_count);
@@ -116,6 +129,7 @@ impl PrebuiltBuiltState {
         }
         Ok(Self {
             lookup_image,
+            worker_image,
             pair_slots: PrebuiltPairSlots {
                 slot_count,
                 entries: entries.into_boxed_slice(),
@@ -123,7 +137,52 @@ impl PrebuiltBuiltState {
         })
     }
 
-    pub(crate) fn into_parts(self) -> (Box<[u8]>, PrebuiltPairSlots) {
-        (self.lookup_image, self.pair_slots)
+    #[cfg(feature = "opt-resolver-provenance")]
+    pub(crate) fn from_resolver_trusted_bytes(bytes: &[u8]) -> Result<Self, WorkerImageError> {
+        if bytes.len() < BUILT_STATE_HEADER_LEN {
+            return Err(WorkerImageError::Truncated);
+        }
+        let slot_count = read_count(bytes, 12)?;
+        let entry_count = read_count(bytes, 16)?;
+        let lookup_len = read_count(bytes, 20)?;
+        let worker_len = read_count(bytes, 24)?;
+        let expected_len = BUILT_STATE_HEADER_LEN
+            .checked_add(lookup_len)
+            .and_then(|length| length.checked_add(worker_len))
+            .and_then(|length| length.checked_add(entry_count.checked_mul(PAIR_RECORD_LEN)?))
+            .ok_or(WorkerImageError::LengthOverflow)?;
+        if bytes.len() != expected_len {
+            return Err(WorkerImageError::LengthMismatch);
+        }
+        let mut cursor = BUILT_STATE_HEADER_LEN;
+        let lookup_image = take(bytes, &mut cursor, lookup_len)?
+            .to_vec()
+            .into_boxed_slice();
+        let worker_image = take(bytes, &mut cursor, worker_len)?
+            .to_vec()
+            .into_boxed_slice();
+        let mut entries = Vec::with_capacity(entry_count);
+        for _ in 0..entry_count {
+            let slot = read_u32(bytes, cursor)?;
+            cursor += 4;
+            let packed = u64::from_le_bytes(
+                take(bytes, &mut cursor, 8)?
+                    .try_into()
+                    .expect("fixed pair record"),
+            );
+            entries.push((slot, packed));
+        }
+        Ok(Self {
+            lookup_image,
+            worker_image,
+            pair_slots: PrebuiltPairSlots {
+                slot_count,
+                entries: entries.into_boxed_slice(),
+            },
+        })
+    }
+
+    pub(crate) fn into_parts(self) -> (Box<[u8]>, Box<[u8]>, PrebuiltPairSlots) {
+        (self.lookup_image, self.worker_image, self.pair_slots)
     }
 }

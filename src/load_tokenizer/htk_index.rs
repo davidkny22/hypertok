@@ -232,6 +232,31 @@ impl HtkLookupIndex {
         })
     }
 
+    #[cfg(feature = "opt-resolver-provenance")]
+    pub(crate) fn build_from_resolver_trusted_table_image(
+        file: &ValidatedFile<'_>,
+        image: &[u8],
+    ) -> Result<Self, HtkIndexError> {
+        if file.header().hash_scheme != HashScheme::None {
+            return Err(HtkIndexError::UnsupportedTableImageScheme);
+        }
+        let offsets = build_offsets(file)?;
+        let table = FingerprintTable::from_resolver_trusted_bytes(image)?;
+        let arena = htk_arena(
+            file.section(SectionId::Arena.value())
+                .expect("resolver-owned file has ARENA")
+                .to_vec(),
+        );
+        Ok(Self {
+            arena,
+            block_shift: offsets.block_shift,
+            bases: offsets.bases,
+            intra: offsets.intra,
+            backend: LookupBackend::Table(table),
+            vocab_size: file.header().vocab_size,
+        })
+    }
+
     #[cfg(feature = "opt-prebuilt-built-state")]
     pub(crate) fn table_image_bytes(&self) -> Option<Vec<u8>> {
         match &self.backend {

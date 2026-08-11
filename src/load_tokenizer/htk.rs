@@ -48,6 +48,10 @@ enum PrebuiltPairData {
 #[path = "htk_replay_tests.rs"]
 mod replay_tests;
 
+#[cfg(all(test, feature = "opt-resolver-provenance"))]
+#[path = "htk_resolver_provenance_tests.rs"]
+mod resolver_provenance_tests;
+
 /// A tokenizer reconstructed from a validated `.htk` image.
 pub enum HtkTokenizer {
     ByteBpe(Box<Tokenizer>),
@@ -118,6 +122,8 @@ pub struct LoadedHtk {
     pub digest: [u8; 32],
     pub worker_transfer_pretokenizer: Option<PretokenizerType>,
     pub worker_unsupported_patterns: Vec<Box<[u8]>>,
+    #[cfg(feature = "opt-resolver-provenance")]
+    pub(crate) resolver_worker_image: Option<Box<[u8]>>,
     pub(crate) reserved_catalog: HtkReservedCatalog,
     pub(crate) reserved_byte_cache: HashMap<Vec<usize>, Box<Tokenizer>, FxBuildHasher>,
 }
@@ -208,12 +214,33 @@ impl From<HtkIndexError> for HtkLoadError {
 
 /// Validate and reconstruct a tokenizer from in-memory `.htk` bytes.
 pub fn load_htk_slice(bytes: &[u8]) -> Result<LoadedHtk, HtkLoadError> {
+    load_htk_slice_inner(bytes, false)
+}
+
+#[cfg(feature = "opt-resolver-provenance")]
+pub(crate) fn load_resolver_trusted_htk_slice(bytes: &[u8]) -> Result<LoadedHtk, HtkLoadError> {
+    load_htk_slice_inner(bytes, true)
+}
+
+fn load_htk_slice_inner(bytes: &[u8], resolver_trusted: bool) -> Result<LoadedHtk, HtkLoadError> {
     #[cfg(feature = "opt-digest-gated-validation")]
     crate::cold_construction::measure("trusted-digest-check", || {
         std::hint::black_box(super::htk_digest_gate::digest(bytes));
     });
+    #[cfg(feature = "opt-resolver-provenance")]
+    let file = crate::cold_construction::measure("file-validation", || {
+        if resolver_trusted {
+            ValidatedFile::read_resolver_trusted(bytes)
+        } else {
+            ValidatedFile::read(bytes)
+        }
+    })?;
+    #[cfg(not(feature = "opt-resolver-provenance"))]
     let file = crate::cold_construction::measure("file-validation", || ValidatedFile::read(bytes))?;
-    if file.header().flags & !(BYTE_BPE_IGNORE_MERGES_FLAG | BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG) != 0 {
+    if !resolver_trusted
+        && file.header().flags & !(BYTE_BPE_IGNORE_MERGES_FLAG | BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG)
+            != 0
+    {
         return Err(HtkLoadError::InvalidModel("unknown header flags"));
     }
     let (specials, reserved_catalog, special_ids, byte_fallback_ids, post, priorities) =
@@ -258,22 +285,41 @@ pub fn load_htk_slice(bytes: &[u8]) -> Result<LoadedHtk, HtkLoadError> {
         })
         .transpose()?
         .map(PrebuiltPairData::Entries);
+    #[cfg(feature = "opt-resolver-provenance")]
+    let mut resolver_worker_image = None;
     #[cfg(feature = "opt-prebuilt-built-state")]
     let prebuilt_lookup_image = file
         .section(PREBUILT_BUILT_STATE_SECTION_ID)
         .map(|section| {
-            PrebuiltBuiltState::from_bytes(section, file.header().vocab_size)
-                .map_err(|_| HtkLoadError::InvalidModel("invalid prebuilt built-state image"))
+            #[cfg(feature = "opt-resolver-provenance")]
+            let state = if resolver_trusted {
+                PrebuiltBuiltState::from_resolver_trusted_bytes(section)
+            } else {
+                PrebuiltBuiltState::from_bytes(section, file.header().vocab_size)
+            };
+            #[cfg(not(feature = "opt-resolver-provenance"))]
+            let state = PrebuiltBuiltState::from_bytes(section, file.header().vocab_size);
+            state.map_err(|_| HtkLoadError::InvalidModel("invalid prebuilt built-state image"))
         })
         .transpose()?
         .map(|state| {
-            let (lookup_image, pair_slots) = state.into_parts();
+            let (lookup_image, worker_image, pair_slots) = state.into_parts();
+            #[cfg(feature = "opt-resolver-provenance")]
+            if resolver_trusted {
+                resolver_worker_image = Some(worker_image);
+            }
+            #[cfg(not(feature = "opt-resolver-provenance"))]
+            let _ = worker_image;
             prebuilt_pair_ranks = Some(PrebuiltPairData::Slots(pair_slots));
             lookup_image
         });
     #[cfg(feature = "opt-prebuilt-built-state")]
     let lookup_index = crate::cold_construction::measure("lookup-index", || {
         match prebuilt_lookup_image.as_deref() {
+            #[cfg(feature = "opt-resolver-provenance")]
+            Some(image) if resolver_trusted => {
+                HtkLookupIndex::build_from_resolver_trusted_table_image(&file, image)
+            }
             Some(image) => HtkLookupIndex::build_from_table_image(
                 &file,
                 &special_ids,
@@ -305,6 +351,7 @@ pub fn load_htk_slice(bytes: &[u8]) -> Result<LoadedHtk, HtkLoadError> {
                 priorities.as_deref(),
                 #[cfg(feature = "opt-prebuilt-pair-ranks")]
                 prebuilt_pair_ranks,
+                resolver_trusted,
             )?))
         }
         StructuralClass::SentencePieceBpe => {
@@ -372,6 +419,8 @@ pub fn load_htk_slice(bytes: &[u8]) -> Result<LoadedHtk, HtkLoadError> {
         digest: file.header().digest,
         worker_transfer_pretokenizer,
         worker_unsupported_patterns,
+        #[cfg(feature = "opt-resolver-provenance")]
+        resolver_worker_image,
         reserved_catalog,
         reserved_byte_cache: HashMap::with_hasher(FxBuildHasher),
     })
@@ -418,14 +467,17 @@ fn build_byte_bpe(
     specials: &[Special],
     priorities: Option<&[u32]>,
     #[cfg(feature = "opt-prebuilt-pair-ranks")] prebuilt_pair_ranks: Option<PrebuiltPairData>,
+    resolver_trusted: bool,
 ) -> Result<Tokenizer, HtkLoadError> {
     let base = crate::cold_construction::measure("base-semantic-validation", || {
         let base = read_byte_base(file);
-        for (byte, &id) in base.iter().enumerate() {
-            if vocab[id as usize].as_ref() != [byte as u8] {
-                return Err(HtkLoadError::InvalidModel(
-                    "BASE id does not denote its indexed byte",
-                ));
+        if !resolver_trusted {
+            for (byte, &id) in base.iter().enumerate() {
+                if vocab[id as usize].as_ref() != [byte as u8] {
+                    return Err(HtkLoadError::InvalidModel(
+                        "BASE id does not denote its indexed byte",
+                    ));
+                }
             }
         }
         Ok::<_, HtkLoadError>(base)
@@ -434,10 +486,15 @@ fn build_byte_bpe(
         crate::cold_construction::measure("special-id-set", || {
             specials.iter().map(|special| special.id).collect()
         });
-    crate::cold_construction::measure("vocabulary-key-set-validation", || {
-        validate_key_set(&vocab, &special_ids, &BTreeSet::new())
-    })?;
-    if file.header().flags & BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG != 0 && priorities.is_none() {
+    if !resolver_trusted {
+        crate::cold_construction::measure("vocabulary-key-set-validation", || {
+            validate_key_set(&vocab, &special_ids, &BTreeSet::new())
+        })?;
+    }
+    if !resolver_trusted
+        && file.header().flags & BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG != 0
+        && priorities.is_none()
+    {
         return Err(HtkLoadError::InvalidModel(
             "exhaustive split reconstruction requires PRIORITY",
         ));
@@ -509,6 +566,7 @@ fn build_byte_bpe(
                             &base,
                             &special_ids,
                             remapping.as_ref(),
+                            resolver_trusted,
                         )
                     },
                 )?),
@@ -648,8 +706,27 @@ pub fn build_prebuilt_built_state_image(bytes: &[u8]) -> Result<Vec<u8>, HtkLoad
             ));
         }
     };
-    PrebuiltBuiltState::to_bytes(vocab_size, &lookup_image, pair_slot_count, &pair_entries)
-        .map_err(|_| HtkLoadError::InvalidModel("could not serialize prebuilt built state"))
+    let pretokenizer = loaded
+        .worker_transfer_pretokenizer
+        .ok_or(HtkLoadError::Unsupported(
+            "prebuilt built state requires a worker-compatible vocabulary",
+        ))?;
+    let worker_image = HtkWorkerModel::new_transfer_source(
+        loaded.lookup_index,
+        pretokenizer,
+        loaded.omega,
+        loaded.digest,
+    )
+    .map_err(|_| HtkLoadError::InvalidModel("could not build worker-transfer image"))?
+    .to_bytes();
+    PrebuiltBuiltState::to_bytes(
+        vocab_size,
+        &lookup_image,
+        &worker_image,
+        pair_slot_count,
+        &pair_entries,
+    )
+    .map_err(|_| HtkLoadError::InvalidModel("could not serialize prebuilt built state"))
 }
 
 #[cfg(feature = "opt-prebuilt-pair-ranks")]
@@ -673,8 +750,19 @@ fn hydrate_prebuilt_pair_slots<T: AsRef<[u8]>>(
     base: &[u32; 256],
     special_ids: &BTreeSet<u32>,
     byte_remapping: Option<&ByteRemapping>,
+    _resolver_trusted: bool,
 ) -> Result<PairRankTable, HtkLoadError> {
     let (slot_count, entries) = prebuilt.into_parts();
+    #[cfg(feature = "opt-resolver-provenance")]
+    if _resolver_trusted {
+        return PairRankTable::from_resolver_trusted_slots(
+            slot_count,
+            &entries,
+            byte_remapping,
+            vocab.len(),
+        )
+        .map_err(HtkLoadError::InvalidModel);
+    }
     let pair_ranks =
         PairRankTable::from_prebuilt_slots(slot_count, &entries, byte_remapping, vocab.len())
             .map_err(HtkLoadError::InvalidModel)?;
