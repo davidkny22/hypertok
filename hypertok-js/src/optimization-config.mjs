@@ -15,6 +15,7 @@ const buildDefinitions = Object.freeze([
 ]);
 
 const runtimeDefinitions = Object.freeze([
+  Object.freeze(["lazyWorkerImage", false, "off"]),
   Object.freeze(["decodeAssembly", true, "auto"]),
   Object.freeze(["decodeBoundary", false, "auto"]),
   Object.freeze(["decodeBorrowedOutput", true, "auto"]),
@@ -80,6 +81,7 @@ export function resolveOptimizationConfig(value) {
     const provided = Object.hasOwn(configuration, key);
     const state = provided ? configuration[key] : defaultState;
     const candidate =
+      key === "lazyWorkerImage" ||
       key === "decodeByteTable" ||
       key === "decodeBorrowedOutput" ||
       key === "decodeUtf16Output" ||
@@ -163,6 +165,7 @@ export function resolveOptimizationConfig(value) {
     artifactFeatures: buildFeatures,
     artifactKey: buildFeatures.join(","),
     overrides: Object.freeze(overrides),
+    lazyWorkerImage: states.lazyWorkerImage === "on" || admitted("lazyWorkerImage"),
     decode,
   });
 }

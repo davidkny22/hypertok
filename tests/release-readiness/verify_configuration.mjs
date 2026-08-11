@@ -33,6 +33,7 @@ assert.deepEqual(automatic.decode, {
 });
 assert.deepEqual(automatic.admitted, admittedOptimizations);
 assert.deepEqual(automatic.overrides, []);
+assert.equal(automatic.lazyWorkerImage, false);
 
 const metadata = JSON.parse(
   execFileSync("cargo", ["metadata", "--locked", "--no-deps", "--format-version", "1"], {
@@ -128,6 +129,12 @@ assert.deepEqual(byteTableOn.overrides, [
   { path: "hypertok.optimizations.decodeByteTable", value: "on" },
 ]);
 assert.throws(() => resolveOptimizationConfig({ decodeAssembly: "on" }), /auto or off/);
+
+const lazyWorkerImageOn = resolveOptimizationConfig({ lazyWorkerImage: "on" });
+assert.equal(lazyWorkerImageOn.lazyWorkerImage, true);
+assert.deepEqual(lazyWorkerImageOn.overrides, [
+  { path: "hypertok.optimizations.lazyWorkerImage", value: "on" },
+]);
 
 const borrowedOutputOn = resolveOptimizationConfig({ decodeBorrowedOutput: "on" });
 assert.equal(borrowedOutputOn.states.decodeBorrowedOutput, "on");

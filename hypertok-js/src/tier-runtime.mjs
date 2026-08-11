@@ -522,12 +522,6 @@ export async function createTierRuntime(options) {
         () => single.vocabularyDigest(),
         (digest) => ({ bytes: digest.byteLength }),
       );
-      workerImage = measureConstruction(
-        "worker-image-serialization",
-        () => single.exportWorkerImage(),
-        (image) => ({ bytes: image.byteLength, builds: 1 }),
-      );
-      observeNativeConstructionProfile("worker-image-native-profile");
     } catch (error) {
       workerImageError = error;
     }
@@ -540,7 +534,7 @@ export async function createTierRuntime(options) {
   let lastTelemetry = Object.freeze({ tier: "single", fallback: false });
   const lifecycle = {
     singleLoads: 1,
-    workerImageExports: workerImage === undefined ? 0 : 1,
+    workerImageExports: 0,
     workerPoolInitializations: 0,
     workerImports: 0,
     workerSourceRebuilds: 0,
@@ -551,6 +545,25 @@ export async function createTierRuntime(options) {
     targetReuses: 0,
     residentSingleIdentity: 1,
   };
+
+  const ensureWorkerImage = () => {
+    if (format !== "htk" || workerImage !== undefined) return;
+    if (workerImageError !== undefined) throw workerImageError;
+    try {
+      workerImage = measureConstruction(
+        "worker-image-serialization",
+        () => single.exportWorkerImage(),
+        (image) => ({ bytes: image.byteLength, builds: 1 }),
+      );
+      observeNativeConstructionProfile("worker-image-native-profile");
+      lifecycle.workerImageExports += 1;
+    } catch (error) {
+      workerImageError = error;
+      throw error;
+    }
+  };
+
+  if (!optimizationConfiguration.lazyWorkerImage) ensureWorkerImage();
 
   const ensureOpen = () => {
     if (closed) throw new Error("execution-tier session is closed");
@@ -563,6 +576,7 @@ export async function createTierRuntime(options) {
       lifecycle.targetReuses += 1;
       return tier;
     }
+    ensureWorkerImage();
     if (workerImageError !== undefined) throw workerImageError;
     if (tier === "worker") {
       if (workerPool !== undefined) {
@@ -801,7 +815,8 @@ export async function createTierRuntime(options) {
           currentTier: tier,
           closed,
           workerImageBytes: workerImage?.byteLength ?? 0,
-          workerImageRetained: workerImage === undefined || workerImage.byteLength !== 0,
+          workerImageRetained:
+            format !== "htk" || (workerImage !== undefined && workerImage.byteLength !== 0),
           sourceDigest: sourceDigest === undefined ? [] : Array.from(sourceDigest),
         }),
       async switchTier(requested) {

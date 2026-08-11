@@ -39,6 +39,7 @@ function runSample(vocabulary, configuration, index) {
     configuration.wasm,
     vocabulary.path,
     "trusted",
+    JSON.stringify(configuration.options ?? {}),
   ], {
     encoding: "utf8",
     windowsHide: true,

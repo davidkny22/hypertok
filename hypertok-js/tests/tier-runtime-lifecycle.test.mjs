@@ -94,6 +94,37 @@ async function withTimeout(promise, milliseconds = 1000) {
   }
 }
 
+test("worker image serialization waits for a worker tier", async () => {
+  created.length = 0;
+  delayedOperations = new Set();
+  setIsolation(false);
+  const resident = await fromBytes(vocabulary, {
+    tier: "single",
+    workers: 1,
+    optimizations: { lazyWorkerImage: "on" },
+  });
+  try {
+    const runtime = resolveShimRuntime(resident);
+    const lifecycle = () => runtime.lifecycle();
+    assert.equal(created.length, 0);
+    assert.equal(lifecycle().workerImageExports, 0);
+    assert.equal(lifecycle().workerImageBytes, 0);
+    assert.equal(lifecycle().workerImageRetained, false);
+
+    const worker = await runtime.switchTier("worker");
+    assert.equal(worker.tier, "worker");
+    assert.equal(created.length, 1);
+    assert.equal(lifecycle().workerImageExports, 1);
+    assert.ok(lifecycle().workerImageBytes > 0);
+    assert.equal(lifecycle().workerImageRetained, true);
+    const probe = "lazy worker image";
+    const ids = await worker.encode(probe);
+    assert.equal(worker.decode(ids), probe);
+  } finally {
+    resident.free();
+  }
+});
+
 test("worker-fault-falls-back-to-single", async () => {
   const tokenizer = await openTier("worker");
   try {

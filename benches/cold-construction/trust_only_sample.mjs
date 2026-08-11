@@ -7,7 +7,8 @@ import { createResolvedVocabLoader } from "../../hypertok-js/src/resolver-proven
 import { fromResolvedVocab } from "../../hypertok-js/src/resolver-runtime.mjs";
 import { createTierRuntime } from "../../hypertok-js/src/tier-runtime.mjs";
 
-const [runtimePath, modulePath, wasmPath, vocabularyPath, mode] = process.argv.slice(2);
+const [runtimePath, modulePath, wasmPath, vocabularyPath, mode, runtimeOptionsJson] =
+  process.argv.slice(2);
 if (
   !runtimePath ||
   !modulePath ||
@@ -24,12 +25,14 @@ const runtimeModule = await import(pathToFileURL(path.resolve(runtimePath)).href
 const wasmModule = await import(pathToFileURL(path.resolve(modulePath)).href);
 const moduleSource = new Uint8Array(fs.readFileSync(wasmPath));
 const vocabulary = new Uint8Array(fs.readFileSync(vocabularyPath));
+const runtimeOptions = JSON.parse(runtimeOptionsJson ?? "{}");
 const handle = mode === "untrusted"
   ? undefined
   : await createResolvedVocabLoader(async () => vocabulary)("pricing-fixture");
 const constructionStages = [];
 
 const resolverOptions = {
+  ...runtimeOptions,
   wasmModule,
   moduleSource,
   tier: "single",
