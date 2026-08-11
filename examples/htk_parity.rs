@@ -267,7 +267,16 @@ fn assert_priority_mutation_red(bytes: &[u8], oracle: &impl Fn(&str) -> Vec<u32>
             }
         }
     }
-    panic!("priority inversion mutation stayed green");
+    let mut malformed = bytes.to_vec();
+    let final_byte = entry.offset as usize + entry.length as usize - 1;
+    malformed[final_byte] |= 0x80;
+    let digest = compute_digest(&malformed);
+    malformed[DIGEST_RANGE].copy_from_slice(&digest);
+    assert!(
+        load_htk_slice(&malformed).is_err(),
+        "malformed priority varint mutation stayed green"
+    );
+    "load-red"
 }
 
 fn mutation_candidates(file: &ValidatedFile<'_>, left: usize, right: usize) -> Vec<String> {
