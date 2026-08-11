@@ -196,6 +196,10 @@ impl From<HtkIndexError> for HtkLoadError {
 
 /// Validate and reconstruct a tokenizer from in-memory `.htk` bytes.
 pub fn load_htk_slice(bytes: &[u8]) -> Result<LoadedHtk, HtkLoadError> {
+    #[cfg(feature = "opt-digest-gated-validation")]
+    crate::cold_construction::measure("trusted-digest-check", || {
+        std::hint::black_box(super::htk_digest_gate::digest(bytes));
+    });
     let file = crate::cold_construction::measure("file-validation", || ValidatedFile::read(bytes))?;
     if file.header().flags & !(BYTE_BPE_IGNORE_MERGES_FLAG | BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG) != 0 {
         return Err(HtkLoadError::InvalidModel("unknown header flags"));

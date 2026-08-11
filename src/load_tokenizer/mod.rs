@@ -2,6 +2,8 @@
 pub mod hf;
 #[cfg(feature = "htk")]
 pub mod htk;
+#[cfg(feature = "opt-digest-gated-validation")]
+pub(crate) mod htk_digest_gate;
 #[cfg(feature = "htk")]
 pub mod htk_chunk;
 #[cfg(all(feature = "htk", feature = "opt-chunk-prescan"))]
