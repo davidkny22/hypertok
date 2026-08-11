@@ -57,12 +57,12 @@ test("registration mutation reproduces the original error for both shims", () =>
   try {
     cpSync(path.join(packageRoot, "src"), path.join(temporary, "src"), { recursive: true });
     cpSync(path.join(packageRoot, "wasm"), path.join(temporary, "wasm"), { recursive: true });
-    const indexPath = path.join(temporary, "src", "index.mjs");
-    const source = readFileSync(indexPath, "utf8");
-    const fixed = "return registerShimRuntime(handle, resolveShimRuntime(runtime));";
-    const mutated = "return registerShimRuntime(handle, runtime);";
+    const shimRuntimePath = path.join(temporary, "src", "shim-runtime.mjs");
+    const source = readFileSync(shimRuntimePath, "utf8");
+    const fixed = "return runtimes.get(handle) ?? handle;";
+    const mutated = "return handle;";
     assert.equal(source.split(fixed).length - 1, 1, "registration seam must have one mutation site");
-    writeFileSync(indexPath, source.replace(fixed, mutated));
+    writeFileSync(shimRuntimePath, source.replace(fixed, mutated));
 
     const result = run(temporary);
     assert.equal(
