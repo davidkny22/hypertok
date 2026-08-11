@@ -4,9 +4,9 @@ import path from "node:path";
 import { Worker as NodeWorker } from "node:worker_threads";
 import { pathToFileURL } from "node:url";
 
-const [runtimePath, vocabularyPath, inputPath] = process.argv.slice(2);
-if (!runtimePath || !vocabularyPath || !inputPath) {
-  throw new Error("usage: sample.mjs runtime vocabulary input");
+const [runtimePath, vocabularyPath, inputPath, tier = "worker"] = process.argv.slice(2);
+if (!runtimePath || !vocabularyPath || !inputPath || !["single", "worker"].includes(tier)) {
+  throw new Error("usage: sample.mjs runtime vocabulary input [single|worker]");
 }
 
 const bootstrap = new URL("./node-worker-bootstrap.mjs", import.meta.url);
@@ -62,25 +62,30 @@ const runtime = await import(pathToFileURL(path.resolve(runtimePath)).href);
 const vocabulary = new Uint8Array(fs.readFileSync(vocabularyPath));
 const source = fs.readFileSync(inputPath);
 const text = new TextDecoder("utf-8", { fatal: true }).decode(source);
-const tokenizer = await runtime.fromBytes(vocabulary, { tier: "worker", workers: 2 });
+const tokenizer = await runtime.fromBytes(vocabulary, { tier, workers: 2 });
 let ids;
 let milliseconds;
 try {
   const started = performance.now();
-  ids = await tokenizer.encode(text);
+  ids = tier === "worker" ? await tokenizer.encode(text) : tokenizer.encodeSync(text);
   milliseconds = performance.now() - started;
-  if (tokenizer.decode(ids) !== text) throw new Error("worker encode did not round-trip");
+  if (tokenizer.decode(ids) !== text) throw new Error("public encode did not round-trip");
 } finally {
   tokenizer.free();
 }
 
-if (
-  tokenizer.tier !== "worker" ||
+if (tokenizer.tier !== tier) {
+  throw new Error(`requested ${tier} tier but constructed ${tokenizer.tier}`);
+}
+if (tier === "worker" && (
   workerStats.calls <= 1 ||
   workerStats.entries <= 1 ||
   workerStats.inputBytes <= source.length
-) {
+)) {
   throw new Error(`worker overlap did not engage: ${JSON.stringify(workerStats)}`);
+}
+if (tier === "single" && Object.values(workerStats).some((value) => value !== 0)) {
+  throw new Error(`single tier dispatched worker work: ${JSON.stringify(workerStats)}`);
 }
 
 const idDigest = crypto.createHash("sha256")
@@ -92,6 +97,6 @@ process.stdout.write(`${JSON.stringify({
   idDigest,
   tokenCount: ids.length,
   vocabSize: tokenizer.vocabSize,
-  tier: tokenizer.tier,
+  tier,
   workerStats,
 })}\n`);

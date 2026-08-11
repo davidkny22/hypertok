@@ -9,6 +9,7 @@ const sampleCount = Number(sampleCountText);
 const vocabularies = JSON.parse(process.env.HYPERTOK_OVERLAP_VOCABULARIES ?? "null");
 const configurations = JSON.parse(process.env.HYPERTOK_OVERLAP_CONFIGURATIONS ?? "null");
 const inputPath = process.env.HYPERTOK_OVERLAP_INPUT;
+const tier = process.env.HYPERTOK_OVERLAP_TIER ?? "worker";
 if (
   !outputPath ||
   !Number.isInteger(sampleCount) ||
@@ -17,7 +18,8 @@ if (
   vocabularies.length === 0 ||
   !Array.isArray(configurations) ||
   configurations.length !== 2 ||
-  !inputPath
+  !inputPath ||
+  !["single", "worker"].includes(tier)
 ) {
   throw new Error("measure.mjs requires output, n, two configurations, vocabularies, and input");
 }
@@ -26,7 +28,7 @@ const sampleScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "sa
 const run = (vocabulary, configuration) => {
   const result = childProcess.spawnSync(
     process.execPath,
-    [sampleScript, configuration.runtimePath, vocabulary.path, inputPath],
+    [sampleScript, configuration.runtimePath, vocabulary.path, inputPath, tier],
     { encoding: "utf8", windowsHide: true, maxBuffer: 2_000_000 },
   );
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
@@ -75,7 +77,7 @@ for (const vocabulary of vocabularies) {
 const report = {
   schemaVersion: 1,
   environment: `${process.version} worker_threads browser-worker adapter`,
-  clockRegime: "performance.now; public worker tier; fresh tokenizer; construction excluded",
+  clockRegime: `performance.now; public ${tier} tier; fresh tokenizer; construction excluded`,
   sampleCount,
   configurations,
   rows,

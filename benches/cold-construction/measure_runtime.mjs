@@ -59,7 +59,6 @@ function repeat(operation, count) {
   };
 }
 
-const runtimeModule = await import(pathToFileURL(path.resolve(runtimePath)).href);
 const workloads = loadCorpus();
 const rows = [];
 for (const vocabulary of vocabularies) {
@@ -67,11 +66,15 @@ for (const vocabulary of vocabularies) {
   const handles = [];
   try {
     for (const configuration of configurations) {
-      const moduleSource = new Uint8Array(fs.readFileSync(configuration.moduleSource));
-      handles.push(await runtimeModule.fromBytes(vocabularyBytes, {
-        tier: "single",
-        moduleSource,
-      }));
+      const configurationRuntimePath = configuration.runtimePath ?? runtimePath;
+      const runtimeModule = await import(
+        pathToFileURL(path.resolve(configurationRuntimePath)).href
+      );
+      const options = { tier: "single" };
+      if (configuration.moduleSource) {
+        options.moduleSource = new Uint8Array(fs.readFileSync(configuration.moduleSource));
+      }
+      handles.push(await runtimeModule.fromBytes(vocabularyBytes, options));
     }
     const [baseline, candidate] = handles;
     for (const workload of workloads) {
