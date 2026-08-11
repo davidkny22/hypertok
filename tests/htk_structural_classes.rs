@@ -35,6 +35,7 @@ fn byte_bpe_fixture_has_stable_mapping_and_runtime_output() {
 }
 
 #[test]
+#[cfg(any(feature = "sentencepiece", feature = "sentencepiece-core"))]
 fn sentencepiece_fixture_has_stable_merge_prefix_and_runtime_output() {
     let bytes = tracked("tests/fixtures/sentencepiece.htk");
     let file = ValidatedFile::read(&bytes).expect("validate tracked SentencePiece fixture");
