@@ -45,7 +45,6 @@ export const selectedBuildOptimizations = Object.freeze([
   "levelSelect",
   "coldDiet",
   "fusedPairRanks",
-  "compactRanks",
 ]);
 const buildFeatures = Object.freeze([
   ...buildDefinitions
