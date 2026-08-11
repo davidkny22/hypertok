@@ -27,6 +27,10 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::sync::Arc;
 
+#[cfg(test)]
+#[path = "htk_replay_tests.rs"]
+mod replay_tests;
+
 /// A tokenizer reconstructed from a validated `.htk` image.
 pub enum HtkTokenizer {
     ByteBpe(Box<Tokenizer>),
@@ -497,19 +501,28 @@ fn reconstruct_id_pair_ranks<T: AsRef<[u8]>>(
         return Ok(None);
     };
     let mut scratch = MergeScratch::default();
+    #[cfg(feature = "opt-merge-replay-fusion")]
+    let mut replay_symbols = Vec::new();
     for (id, token) in vocab.iter().enumerate() {
         let token = token.as_ref();
         let id = id as u32;
         if token.len() < 2 || specials.contains(&id) {
             continue;
         }
-        let mut symbols: Vec<TokenId> = token
+        #[cfg(feature = "opt-merge-replay-fusion")]
+        let symbols = {
+            replay_symbols.clear();
+            replay_symbols.extend(token.iter().map(|byte| TokenId::from(base[*byte as usize])));
+            &mut replay_symbols
+        };
+        #[cfg(not(feature = "opt-merge-replay-fusion"))]
+        let symbols = &mut token
             .iter()
             .map(|byte| TokenId::from(base[*byte as usize]))
-            .collect();
+            .collect::<Vec<_>>();
         bpe::bpe_merge_symbols_by_rank(
             &|left, right| pair_ranks.rank(left, right),
-            &mut symbols,
+            symbols,
             &mut scratch,
         );
         if symbols.len() != 2 {
