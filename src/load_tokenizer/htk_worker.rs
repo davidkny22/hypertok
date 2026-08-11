@@ -24,6 +24,13 @@ mod pair_image;
 #[cfg(feature = "opt-prebuilt-pair-ranks")]
 pub(crate) use pair_image::PrebuiltPairEntries;
 
+#[cfg(feature = "opt-prebuilt-compact-replay")]
+#[path = "htk_compact_replay.rs"]
+mod compact_replay;
+
+#[cfg(feature = "opt-prebuilt-compact-replay")]
+pub(crate) use compact_replay::PrebuiltReplayPairs;
+
 #[cfg(feature = "opt-prebuilt-built-state")]
 #[path = "htk_built_state.rs"]
 mod built_state;

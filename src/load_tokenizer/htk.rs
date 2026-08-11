@@ -6,6 +6,8 @@
 pub use super::htk_index::{HtkIndexError, HtkLookupIndex};
 use super::htk_reserved::{HtkReservedCatalog, HtkReservedDefinition, HtkReservedPolicy};
 pub use super::htk_reserved::{HtkReservedEncoding, HtkReservedError};
+#[cfg(feature = "opt-prebuilt-compact-replay")]
+use super::htk_worker::PrebuiltReplayPairs;
 #[cfg(feature = "opt-prebuilt-pair-ranks")]
 use super::htk_worker::{HtkWorkerModel, PrebuiltPairEntries};
 #[cfg(feature = "opt-prebuilt-built-state")]
@@ -37,11 +39,16 @@ pub const PREBUILT_PAIR_RANKS_SECTION_ID: u32 = 1025;
 #[cfg(feature = "opt-prebuilt-built-state")]
 pub const PREBUILT_BUILT_STATE_SECTION_ID: u32 = 1026;
 
+#[cfg(feature = "opt-prebuilt-compact-replay")]
+pub const PREBUILT_COMPACT_REPLAY_SECTION_ID: u32 = 1027;
+
 #[cfg(feature = "opt-prebuilt-pair-ranks")]
 enum PrebuiltPairData {
     Entries(PrebuiltPairEntries),
     #[cfg(feature = "opt-prebuilt-built-state")]
     Slots(PrebuiltPairSlots),
+    #[cfg(feature = "opt-prebuilt-compact-replay")]
+    Replay(PrebuiltReplayPairs),
 }
 
 #[cfg(test)]
@@ -296,6 +303,25 @@ fn load_htk_slice_inner(
         })
         .transpose()?
         .map(PrebuiltPairData::Entries);
+    #[cfg(feature = "opt-prebuilt-compact-replay")]
+    if let Some(section) = file.section(PREBUILT_COMPACT_REPLAY_SECTION_ID) {
+        if prebuilt_pair_ranks.is_some() {
+            return Err(HtkLoadError::InvalidModel(
+                "multiple prebuilt pair representations are present",
+            ));
+        }
+        #[cfg(feature = "opt-resolver-provenance")]
+        let replay = if resolver_trusted {
+            PrebuiltReplayPairs::from_resolver_trusted_bytes(section)
+        } else {
+            PrebuiltReplayPairs::from_bytes(section, file.header().vocab_size)
+        };
+        #[cfg(not(feature = "opt-resolver-provenance"))]
+        let replay = PrebuiltReplayPairs::from_bytes(section, file.header().vocab_size);
+        prebuilt_pair_ranks = Some(PrebuiltPairData::Replay(replay.map_err(|_| {
+            HtkLoadError::InvalidModel("invalid prebuilt compact replay image")
+        })?));
+    }
     #[cfg(feature = "opt-resolver-provenance")]
     let mut resolver_worker_image = None;
     #[cfg(feature = "opt-prebuilt-built-state")]
@@ -392,17 +418,15 @@ fn load_htk_slice_inner(
             }
         }
     };
-    let worker_transfer_pretokenizer = crate::cold_construction::measure(
-        "worker-transfer-routing",
-        || match &tokenizer {
+    let worker_transfer_pretokenizer =
+        crate::cold_construction::measure("worker-transfer-routing", || match &tokenizer {
             HtkTokenizer::ByteBpe(tokenizer)
                 if priorities.is_none() && worker_transfer_pipeline_supported(&file) =>
             {
                 Some(tokenizer.pretokenizer_type())
             }
             _ => None,
-        },
-    );
+        });
     let worker_unsupported_patterns =
         crate::cold_construction::measure("worker-unsupported-patterns", || {
             specials
@@ -495,10 +519,9 @@ fn build_byte_bpe(
         }
         Ok::<_, HtkLoadError>(base)
     })?;
-    let special_ids: BTreeSet<u32> =
-        crate::cold_construction::measure("special-id-set", || {
-            specials.iter().map(|special| special.id).collect()
-        });
+    let special_ids: BTreeSet<u32> = crate::cold_construction::measure("special-id-set", || {
+        specials.iter().map(|special| special.id).collect()
+    });
     if !resolver_trusted {
         crate::cold_construction::measure("vocabulary-key-set-validation", || {
             validate_key_set(&vocab, &special_ids, &BTreeSet::new())
@@ -583,6 +606,19 @@ fn build_byte_bpe(
                         )
                     },
                 )?),
+                #[cfg(feature = "opt-prebuilt-compact-replay")]
+                Some(PrebuiltPairData::Replay(prebuilt)) => Some(
+                    crate::cold_construction::measure("prebuilt-compact-replay", || {
+                        hydrate_prebuilt_replay_pairs(
+                            prebuilt,
+                            &vocab,
+                            &base,
+                            &special_ids,
+                            remapping.as_ref(),
+                            resolver_trusted,
+                        )
+                    })?,
+                ),
                 None => crate::cold_construction::measure("merge-replay", || {
                     reconstruct_id_pair_ranks(
                         &vocab,
@@ -756,6 +792,26 @@ pub fn build_prebuilt_built_state_image(bytes: &[u8]) -> Result<Vec<u8>, HtkLoad
     .map_err(|_| HtkLoadError::InvalidModel("could not serialize prebuilt built state"))
 }
 
+#[cfg(feature = "opt-prebuilt-compact-replay")]
+pub fn build_prebuilt_compact_replay_image(bytes: &[u8]) -> Result<Vec<u8>, HtkLoadError> {
+    let loaded = load_htk_slice(bytes)?;
+    let pretokenizer = loaded
+        .worker_transfer_pretokenizer
+        .ok_or(HtkLoadError::Unsupported(
+            "prebuilt compact replay requires a worker-compatible byte-BPE vocabulary",
+        ))?;
+    let model = HtkWorkerModel::new(
+        loaded.lookup_index,
+        pretokenizer,
+        loaded.omega,
+        loaded.digest,
+    )
+    .map_err(|_| HtkLoadError::InvalidModel("could not build compact replay pairs"))?;
+    model
+        .to_prebuilt_replay_bytes()
+        .map_err(|_| HtkLoadError::InvalidModel("could not serialize compact replay pairs"))
+}
+
 #[cfg(feature = "opt-prebuilt-pair-ranks")]
 fn hydrate_prebuilt_pair_ranks<T: AsRef<[u8]>>(
     prebuilt: PrebuiltPairEntries,
@@ -794,6 +850,51 @@ fn hydrate_prebuilt_pair_slots<T: AsRef<[u8]>>(
         PairRankTable::from_prebuilt_slots(slot_count, &entries, byte_remapping, vocab.len())
             .map_err(HtkLoadError::InvalidModel)?;
     validate_prebuilt_pair_ranks(pair_ranks, vocab, base, special_ids)
+}
+
+#[cfg(feature = "opt-prebuilt-compact-replay")]
+fn hydrate_prebuilt_replay_pairs<T: AsRef<[u8]>>(
+    prebuilt: PrebuiltReplayPairs,
+    vocab: &[T],
+    base: &[u32; 256],
+    special_ids: &BTreeSet<u32>,
+    byte_remapping: Option<&ByteRemapping>,
+    resolver_trusted: bool,
+) -> Result<PairRankTable, HtkLoadError> {
+    let entries = prebuilt.into_entries();
+    let merge_count = vocab
+        .iter()
+        .enumerate()
+        .filter(|(id, token)| token.as_ref().len() >= 2 && !special_ids.contains(&(*id as u32)))
+        .count();
+    if entries.len() != merge_count {
+        return Err(HtkLoadError::InvalidModel(
+            "prebuilt compact replay entry count does not match the vocabulary",
+        ));
+    }
+    let mut pair_ranks = PairRankTable::with_capacity(byte_remapping, vocab.len(), merge_count)
+        .ok_or(HtkLoadError::InvalidModel(
+            "prebuilt compact replay exceeds pair-table capacity",
+        ))?;
+    for ((left, right), (merged, _)) in
+        entries
+            .into_vec()
+            .into_iter()
+            .zip(vocab.iter().enumerate().filter(|(id, token)| {
+                token.as_ref().len() >= 2 && !special_ids.contains(&(*id as u32))
+            }))
+    {
+        if !pair_ranks.insert(TokenId(left), TokenId(right), TokenId(merged as u32)) {
+            return Err(HtkLoadError::InvalidModel(
+                "prebuilt compact replay contains an invalid pair",
+            ));
+        }
+    }
+    if resolver_trusted {
+        Ok(pair_ranks)
+    } else {
+        validate_prebuilt_pair_ranks(pair_ranks, vocab, base, special_ids)
+    }
 }
 
 #[cfg(feature = "opt-prebuilt-pair-ranks")]

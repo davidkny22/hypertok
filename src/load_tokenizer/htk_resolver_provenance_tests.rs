@@ -37,6 +37,37 @@ fn with_prebuilt_built_state(source: &[u8]) -> Vec<u8> {
     .expect("write candidate vocabulary")
 }
 
+#[cfg(feature = "opt-prebuilt-compact-replay")]
+fn with_prebuilt_compact_replay(source: &[u8]) -> Vec<u8> {
+    let file = ValidatedFile::read(source).expect("validate source vocabulary");
+    let mut sections = file
+        .sections()
+        .map(|entry| {
+            let bytes = file.section(entry.id).expect("validated section").to_vec();
+            match SectionId::from_known(entry.id) {
+                Some(id) => Section::new(id, bytes),
+                None => Section::extension(entry.id, bytes).expect("valid source extension"),
+            }
+        })
+        .collect::<Vec<_>>();
+    sections.push(
+        Section::extension(
+            PREBUILT_COMPACT_REPLAY_SECTION_ID,
+            build_prebuilt_compact_replay_image(source).expect("build compact replay image"),
+        )
+        .expect("available compact replay section"),
+    );
+    write(&Document {
+        structural_class: file.header().structural_class,
+        hash_scheme: file.header().hash_scheme,
+        flags: file.header().flags,
+        vocab_size: file.header().vocab_size,
+        omega: file.header().omega,
+        sections,
+    })
+    .expect("write candidate vocabulary")
+}
+
 #[test]
 fn resolver_provenance_preserves_exact_runtime_behavior() {
     let source = tracked("hypertok-vocab/gpt2/vocab.htk");
@@ -55,6 +86,33 @@ fn resolver_provenance_preserves_exact_runtime_behavior() {
         let actual = trusted.tokenizer.encode(text);
         assert_eq!(actual, expected, "encode parity for {text:?}");
         assert_eq!(trusted.tokenizer.decode(&actual), text.as_bytes());
+    }
+}
+
+#[cfg(feature = "opt-prebuilt-compact-replay")]
+#[test]
+fn resolver_provenance_uses_compact_replay_exactly() {
+    for path in [
+        "hypertok-vocab/gpt2/vocab.htk",
+        "hypertok-vocab/o200k/vocab.htk",
+    ] {
+        let source = tracked(path);
+        let candidate = with_prebuilt_compact_replay(&source);
+        let mut reference = load_htk_slice(&source).expect("load source vocabulary");
+        let mut trusted = load_resolver_trusted_htk_slice(&candidate)
+            .expect("load resolver-owned compact replay vocabulary");
+        for text in [
+            "Plain prose with punctuation.",
+            "const answer = (x) => x * 42;\n",
+            "\u{4e2d}\u{6587}\u{3068}\u{65e5}\u{672c}\u{8a9e}",
+            "\u{1f469}\u{1f3fd}\u{200d}\u{1f4bb}\u{1f680}",
+            " \t\n\n\u{feff} boundary ",
+        ] {
+            let expected = reference.tokenizer.encode(text);
+            let actual = trusted.tokenizer.encode(text);
+            assert_eq!(actual, expected, "encode parity for {path} and {text:?}");
+            assert_eq!(trusted.tokenizer.decode(&actual), text.as_bytes());
+        }
     }
 }
 
