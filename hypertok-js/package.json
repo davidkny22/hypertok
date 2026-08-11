@@ -22,6 +22,7 @@
     "src/index-edge.mjs",
     "src/index.mjs",
     "src/optimization-config.mjs",
+    "src/public-runtime.mjs",
     "src/shared-controller.mjs",
     "src/shim-runtime.mjs",
     "src/tier-runtime.mjs",
