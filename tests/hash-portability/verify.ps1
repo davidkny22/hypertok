@@ -8,6 +8,7 @@ $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..")).Path
 $output = [System.IO.Path]::GetFullPath((Join-Path $root $OutputDirectory))
 $hashCrate = Join-Path $root "hypertok-hash"
 $wasmCrate = Join-Path $PSScriptRoot "wasm"
+$wasmTarget = Join-Path $wasmCrate "target"
 
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 
@@ -35,13 +36,13 @@ try {
 $env:HYPERTOK_HASH_FIXTURE_DIR = $output.Replace("\", "/")
 Push-Location $wasmCrate
 try {
-    cargo +stable-x86_64-pc-windows-msvc build --release --target wasm32-unknown-unknown
+    cargo +stable-x86_64-pc-windows-msvc build --release --target wasm32-unknown-unknown --target-dir $wasmTarget
     if ($LASTEXITCODE -ne 0) { throw "wasm probe build failed" }
 } finally {
     Pop-Location
 }
 
-$wasm = Join-Path $wasmCrate "target\wasm32-unknown-unknown\release\hypertok_hash_wasm_probe.wasm"
+$wasm = Join-Path $wasmTarget "wasm32-unknown-unknown\release\hypertok_hash_wasm_probe.wasm"
 node (Join-Path $PSScriptRoot "verify.mjs") $wasm (Join-Path $output "image.bin") (Join-Path $output "inputs.bin")
 if ($LASTEXITCODE -ne 0) { throw "cross-architecture verifier failed" }
 
