@@ -37,7 +37,13 @@ for (const vocabulary of vocabularies) {
     for (const configuration of ordered) {
       const run = childProcess.spawnSync(
         process.execPath,
-        [sampleScript, configuration.moduleDirectory, vocabulary.path],
+        [
+          sampleScript,
+          configuration.moduleDirectory,
+          configuration.vocabularyPaths?.[vocabulary.id] ??
+            configuration.vocabularyPath ??
+            vocabulary.path,
+        ],
         { encoding: "utf8", windowsHide: true, maxBuffer: 2_000_000 },
       );
       if (run.status !== 0) {

@@ -163,7 +163,6 @@ const prepared = inputs.map((input) => {
   const fixture = runWorker(["prepare", resolved, fixtureDirectory]);
   return {
     ...fixture,
-    name: path.basename(input, path.extname(input)),
     sourceSha256: sha256(resolved),
   };
 });

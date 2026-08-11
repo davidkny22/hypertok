@@ -42,7 +42,13 @@ for (const vocabulary of vocabularies) {
       if (typeof configuration?.id !== "string") {
         throw new TypeError("each configuration needs a string id field");
       }
-      const args = [sampleScript, runtimePath, vocabulary.path];
+      const args = [
+        sampleScript,
+        runtimePath,
+        configuration.vocabularyPaths?.[vocabulary.id] ??
+          configuration.vocabularyPath ??
+          vocabulary.path,
+      ];
       if (configuration.moduleSource !== null && configuration.moduleSource !== undefined) {
         args.push(configuration.moduleSource);
       }

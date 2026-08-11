@@ -66,7 +66,10 @@ impl Candidate {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Prepared {
+    name: String,
     input: String,
+    scheme0_raw_path: String,
+    scheme1_raw_path: String,
     scheme0_path: String,
     scheme1_path: String,
     scheme0_raw_bytes: usize,
@@ -552,15 +555,31 @@ fn prepare(input_path: &Path, output_directory: &Path) -> Result<Prepared, AnyEr
         .file_stem()
         .and_then(|value| value.to_str())
         .ok_or("input path has no UTF-8 stem")?;
-    let scheme0_path = output_directory.join(format!("{stem}.scheme0.htk.br"));
-    let scheme1_path = output_directory.join(format!("{stem}.scheme1.htk.br"));
+    let name = if stem == "vocab" {
+        input_path
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(|value| value.to_str())
+            .ok_or("vocab input has no UTF-8 package directory")?
+    } else {
+        stem
+    };
+    let scheme0_raw_path = output_directory.join(format!("{name}.scheme0.htk"));
+    let scheme1_raw_path = output_directory.join(format!("{name}.scheme1.htk"));
+    let scheme0_path = output_directory.join(format!("{name}.scheme0.htk.br"));
+    let scheme1_path = output_directory.join(format!("{name}.scheme1.htk.br"));
     let scheme0_compressed = compress(&input)?;
     let scheme1_compressed = compress(&scheme1)?;
+    fs::write(&scheme0_raw_path, &input)?;
+    fs::write(&scheme1_raw_path, &scheme1)?;
     fs::write(&scheme0_path, &scheme0_compressed)?;
     fs::write(&scheme1_path, &scheme1_compressed)?;
 
     Ok(Prepared {
+        name: name.to_owned(),
         input: normalized(input_path),
+        scheme0_raw_path: normalized(&scheme0_raw_path),
+        scheme1_raw_path: normalized(&scheme1_raw_path),
         scheme0_path: normalized(&scheme0_path),
         scheme1_path: normalized(&scheme1_path),
         scheme0_raw_bytes: input.len(),
