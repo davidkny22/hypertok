@@ -80,7 +80,7 @@
         "--locked",
         "--no-default-features",
         "--features",
-        "portable-json,wasm-binding,htk,sentencepiece-core,source-loaders,opt-marshalling,opt-chunk-prescan,opt-scan-two-phase,opt-level-select,opt-cold-diet,opt-fused-pair-ranks,opt-compact-ranks,opt-decode-assembly",
+        "portable-json,wasm-binding,htk,sentencepiece-core,source-loaders,opt-marshalling,opt-chunk-prescan,opt-scan-two-phase,opt-level-select,opt-cold-diet,opt-fused-pair-ranks,opt-decode-assembly",
         "--lib",
         "--tests",
         "--",

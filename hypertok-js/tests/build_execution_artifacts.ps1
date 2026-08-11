@@ -31,7 +31,6 @@ $shippingOptimizations = @(
     "opt-level-select"
     "opt-cold-diet"
     "opt-fused-pair-ranks"
-    "opt-compact-ranks"
 )
 $shippingSingleOptimizations = @($shippingOptimizations) + @(
     "opt-decode-assembly"
