@@ -59,6 +59,36 @@ fn resolver_provenance_preserves_exact_runtime_behavior() {
 }
 
 #[test]
+fn resolver_provenance_preserves_plain_construction_behavior() {
+    for path in [
+        "hypertok-vocab/gpt2/vocab.htk",
+        "hypertok-vocab/o200k/vocab.htk",
+    ] {
+        let source = tracked(path);
+        let mut reference = load_htk_slice(&source).expect("load source vocabulary");
+        let mut trusted =
+            load_resolver_trusted_htk_slice(&source).expect("load resolver-owned vocabulary");
+        let mut warmed = load_resolver_trusted_warm_htk_slice(&source)
+            .expect("load warmed resolver-owned vocabulary");
+        for text in [
+            "Plain prose with punctuation.",
+            "const answer = (x) => x * 42;\n",
+            "\u{4e2d}\u{6587}\u{3068}\u{65e5}\u{672c}\u{8a9e}",
+            "\u{1f469}\u{1f3fd}\u{200d}\u{1f4bb}\u{1f680}",
+            " \t\n\n\u{feff} boundary ",
+        ] {
+            let expected = reference.tokenizer.encode(text);
+            let actual = trusted.tokenizer.encode(text);
+            let warmed_actual = warmed.tokenizer.encode(text);
+            assert_eq!(actual, expected, "encode parity for {path} and {text:?}");
+            assert_eq!(warmed_actual, expected, "warmed parity for {path} and {text:?}");
+            assert_eq!(trusted.tokenizer.decode(&actual), text.as_bytes());
+            assert_eq!(warmed.tokenizer.decode(&warmed_actual), text.as_bytes());
+        }
+    }
+}
+
+#[test]
 fn only_resolver_provenance_bypasses_the_file_digest() {
     let source = tracked("hypertok-vocab/gpt2/vocab.htk");
     let mut candidate = with_prebuilt_built_state(&source);

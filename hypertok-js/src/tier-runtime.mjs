@@ -239,13 +239,36 @@ function flattenIds(parts) {
   return flat;
 }
 
-async function loadSingle(moduleUrl, moduleSource, vocabulary, scheme, format, bundledModule) {
+async function loadSingle(
+  moduleUrl,
+  moduleSource,
+  vocabulary,
+  scheme,
+  format,
+  bundledModule,
+  resolverTrusted,
+  resolverWarmup,
+) {
   const module = bundledModule
     ?? await import(/* webpackIgnore: true */ /* @vite-ignore */ moduleUrl);
   await module.default(
     moduleSource === undefined ? undefined : { module_or_path: moduleSource },
   );
-  if (format === "htk") return module.WasmTokenizer.fromHtk(vocabulary);
+  if (format === "htk") {
+    if (resolverTrusted) {
+      if (resolverWarmup) {
+        if (typeof module.WasmTokenizer.fromResolverTrustedWarmHtk !== "function") {
+          throw new Error("the wasm module has no resolver warmup constructor");
+        }
+        return module.WasmTokenizer.fromResolverTrustedWarmHtk(vocabulary);
+      }
+      if (typeof module.WasmTokenizer.fromResolverTrustedHtk !== "function") {
+        throw new Error("the wasm module has no resolver-provenance constructor");
+      }
+      return module.WasmTokenizer.fromResolverTrustedHtk(vocabulary);
+    }
+    return module.WasmTokenizer.fromHtk(vocabulary);
+  }
   if (format === "huggingface") return module.WasmTokenizer.fromHuggingFace(vocabulary);
   return module.WasmTokenizer.fromTiktoken(vocabulary, scheme);
 }
@@ -390,12 +413,17 @@ export async function createTierRuntime(options) {
     scheme,
     format = "tiktoken",
     workerCount = Math.max(1, Math.min(4, globalThis.navigator?.hardwareConcurrency ?? 1)),
+    resolverTrusted = false,
+    resolverWarmup = false,
   } = options;
   if (!(vocabulary instanceof Uint8Array)) {
     throw new TypeError("vocabulary must be a Uint8Array");
   }
   if (!Number.isInteger(workerCount) || workerCount < 1) {
     throw new TypeError("workerCount must be a positive integer");
+  }
+  if (resolverWarmup && !resolverTrusted) {
+    throw new TypeError("resolver warmup requires resolver provenance");
   }
   const capabilities = options.capabilities ?? browserCapabilities();
   const optimizationConfiguration = resolveOptimizationConfig(options.optimizations);
@@ -410,6 +438,8 @@ export async function createTierRuntime(options) {
     scheme,
     format,
     unthreadedModule,
+    resolverTrusted,
+    resolverWarmup,
   );
   const decodeConfiguration =
     optimizationConfiguration.decode.assembly && typeof single.decodeAssemblyBytes !== "function"

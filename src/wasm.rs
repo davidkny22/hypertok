@@ -4,7 +4,9 @@ use crate::decode_profiling::{DecodeProfileClock, DecodeProfileSnapshot};
 #[cfg(feature = "source-loaders")]
 use crate::load_tokenizer::hf::{HfTokenizer, load_hf_slice};
 #[cfg(feature = "opt-resolver-provenance")]
-use crate::load_tokenizer::htk::load_resolver_trusted_htk_slice;
+use crate::load_tokenizer::htk::{
+    load_resolver_trusted_htk_slice, load_resolver_trusted_warm_htk_slice,
+};
 #[cfg(feature = "htk")]
 use crate::load_tokenizer::htk::{HtkTokenizer, LoadedHtk, load_htk_slice};
 #[cfg(feature = "htk")]
@@ -279,6 +281,14 @@ impl WasmTokenizer {
     pub fn from_resolver_trusted_htk(data: &[u8]) -> Result<WasmTokenizer, JsError> {
         crate::cold_construction::begin();
         let loaded = load_resolver_trusted_htk_slice(data).map_err(js_error)?;
+        Self::from_loaded_htk(loaded)
+    }
+
+    #[cfg(feature = "opt-resolver-provenance")]
+    #[wasm_bindgen(js_name = fromResolverTrustedWarmHtk)]
+    pub fn from_resolver_trusted_warm_htk(data: &[u8]) -> Result<WasmTokenizer, JsError> {
+        crate::cold_construction::begin();
+        let loaded = load_resolver_trusted_warm_htk_slice(data).map_err(js_error)?;
         Self::from_loaded_htk(loaded)
     }
 

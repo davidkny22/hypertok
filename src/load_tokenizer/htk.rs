@@ -214,15 +214,26 @@ impl From<HtkIndexError> for HtkLoadError {
 
 /// Validate and reconstruct a tokenizer from in-memory `.htk` bytes.
 pub fn load_htk_slice(bytes: &[u8]) -> Result<LoadedHtk, HtkLoadError> {
-    load_htk_slice_inner(bytes, false)
+    load_htk_slice_inner(bytes, false, false)
 }
 
 #[cfg(feature = "opt-resolver-provenance")]
 pub(crate) fn load_resolver_trusted_htk_slice(bytes: &[u8]) -> Result<LoadedHtk, HtkLoadError> {
-    load_htk_slice_inner(bytes, true)
+    load_htk_slice_inner(bytes, true, false)
 }
 
-fn load_htk_slice_inner(bytes: &[u8], resolver_trusted: bool) -> Result<LoadedHtk, HtkLoadError> {
+#[cfg(feature = "opt-resolver-provenance")]
+pub(crate) fn load_resolver_trusted_warm_htk_slice(
+    bytes: &[u8],
+) -> Result<LoadedHtk, HtkLoadError> {
+    load_htk_slice_inner(bytes, true, true)
+}
+
+fn load_htk_slice_inner(
+    bytes: &[u8],
+    resolver_trusted: bool,
+    touch_before_replay: bool,
+) -> Result<LoadedHtk, HtkLoadError> {
     #[cfg(feature = "opt-digest-gated-validation")]
     crate::cold_construction::measure("trusted-digest-check", || {
         std::hint::black_box(super::htk_digest_gate::digest(bytes));
@@ -352,6 +363,7 @@ fn load_htk_slice_inner(bytes: &[u8], resolver_trusted: bool) -> Result<LoadedHt
                 #[cfg(feature = "opt-prebuilt-pair-ranks")]
                 prebuilt_pair_ranks,
                 resolver_trusted,
+                touch_before_replay,
             )?))
         }
         StructuralClass::SentencePieceBpe => {
@@ -468,6 +480,7 @@ fn build_byte_bpe(
     priorities: Option<&[u32]>,
     #[cfg(feature = "opt-prebuilt-pair-ranks")] prebuilt_pair_ranks: Option<PrebuiltPairData>,
     resolver_trusted: bool,
+    touch_before_replay: bool,
 ) -> Result<Tokenizer, HtkLoadError> {
     let base = crate::cold_construction::measure("base-semantic-validation", || {
         let base = read_byte_base(file);
@@ -571,12 +584,26 @@ fn build_byte_bpe(
                     },
                 )?),
                 None => crate::cold_construction::measure("merge-replay", || {
-                    reconstruct_id_pair_ranks(&vocab, &base, &special_ids, remapping.as_ref())
+                    reconstruct_id_pair_ranks(
+                        &vocab,
+                        &base,
+                        &special_ids,
+                        remapping.as_ref(),
+                        resolver_trusted,
+                        touch_before_replay,
+                    )
                 })?,
             };
             #[cfg(not(feature = "opt-prebuilt-pair-ranks"))]
             let pair_ranks = crate::cold_construction::measure("merge-replay", || {
-                reconstruct_id_pair_ranks(&vocab, &base, &special_ids, remapping.as_ref())
+                reconstruct_id_pair_ranks(
+                    &vocab,
+                    &base,
+                    &special_ids,
+                    remapping.as_ref(),
+                    resolver_trusted,
+                    touch_before_replay,
+                )
             })?;
             match pair_ranks {
                 Some(pair_ranks) => {
@@ -839,7 +866,18 @@ fn reconstruct_id_pair_ranks<T: AsRef<[u8]>>(
     base: &[u32; 256],
     specials: &BTreeSet<u32>,
     byte_remapping: Option<&ByteRemapping>,
+    resolver_trusted: bool,
+    touch_before_replay: bool,
 ) -> Result<Option<PairRankTable>, HtkLoadError> {
+    if touch_before_replay {
+        crate::cold_construction::measure("trusted-vocabulary-touch", || {
+            let checksum = std::hint::black_box(vocab)
+                .iter()
+                .flat_map(|token| token.as_ref())
+                .fold(0_u64, |sum, byte| sum.wrapping_add(u64::from(*byte)));
+            std::hint::black_box(checksum);
+        });
+    }
     let merge_count = crate::cold_construction::measure("replay-rule-count", || {
         vocab
             .iter()
@@ -877,15 +915,20 @@ fn reconstruct_id_pair_ranks<T: AsRef<[u8]>>(
             symbols,
             &mut scratch,
         );
-        if symbols.len() != 2 {
+        if !resolver_trusted && symbols.len() != 2 {
             return Err(HtkLoadError::InvalidModel(
                 "token does not reconstruct from one final merge",
             ));
         }
-        if pair_ranks.rank(symbols[0], symbols[1]) != u32::MAX {
+        let Some((&left, &right)) = symbols.first().zip(symbols.get(1)) else {
+            return Err(HtkLoadError::InvalidModel(
+                "token does not reconstruct from one final merge",
+            ));
+        };
+        if !resolver_trusted && pair_ranks.rank(left, right) != u32::MAX {
             return Err(HtkLoadError::InvalidModel("duplicate merge pair"));
         }
-        if !pair_ranks.insert(symbols[0], symbols[1], TokenId::from(id)) {
+        if !pair_ranks.insert(left, right, TokenId::from(id)) {
             return Ok(None);
         }
     }

@@ -9,7 +9,13 @@ import {
 import { fromResolvedVocab } from "../src/resolver-runtime.mjs";
 
 test("only resolver-minted handles reach trusted construction", async () => {
-  const source = new Uint8Array([1, 2, 3]);
+  const source = new Uint8Array(64);
+  const view = new DataView(source.buffer);
+  view.setUint16(8, 1, true);
+  view.setUint8(10, 0);
+  view.setUint32(16, 50_257, true);
+  view.setUint32(24, 0, true);
+  view.setUint32(28, 64, true);
   const handle = await createResolvedVocabLoader(async () => source)("gpt2");
   assert.equal(Object.isFrozen(handle), true);
   assert.deepEqual([...Object.keys(handle)], []);
@@ -24,18 +30,70 @@ test("only resolver-minted handles reach trusted construction", async () => {
   );
 
   let received;
-  const tokenizer = { free() {} };
-  const wasmModule = {
-    async default() {},
-    WasmTokenizer: {
-      fromResolverTrustedHtk(bytes) {
-        received = bytes;
-        return tokenizer;
-      },
+  let closed = false;
+  const runtime = {
+    tier: "single",
+    optimizations: () => ({ decode: { leanDispatch: false } }),
+    encode: async () => new Uint32Array([1]),
+    encodeSync: () => new Uint32Array([1]),
+    encodeInto: async () => 1,
+    encodeDetailed: async () => ({ ids: new Uint32Array([1]) }),
+    decode: () => "probe",
+    tokenBytes: () => new Uint8Array([1]),
+    close: async () => {
+      closed = true;
     },
   };
-  assert.strictEqual(await fromResolvedVocab(handle, { wasmModule }), tokenizer);
-  assert.strictEqual(received, source);
+  const publicRuntime = await fromResolvedVocab(handle, {
+    wasmModule: {},
+    runtimeFactory: async (options) => {
+      received = options;
+      return runtime;
+    },
+  });
+  assert.equal(publicRuntime.tier, "single");
+  assert.equal(publicRuntime.vocabSize, 50_257);
+  assert.strictEqual(received.vocabulary, source);
+  assert.equal(received.resolverTrusted, true);
+  assert.equal(received.resolverWarmup, false);
+  publicRuntime.free();
+  await Promise.resolve();
+  assert.equal(closed, true);
+});
+
+test("resolver warmup reaches only the trusted construction route", async () => {
+  const source = new Uint8Array(64);
+  const view = new DataView(source.buffer);
+  view.setUint16(8, 1, true);
+  view.setUint8(10, 0);
+  view.setUint32(16, 50_257, true);
+  view.setUint32(24, 0, true);
+  view.setUint32(28, 64, true);
+  const handle = await createResolvedVocabLoader(async () => source)("gpt2");
+  let received;
+  const runtime = {
+    tier: "single",
+    optimizations: () => ({ decode: { leanDispatch: false } }),
+    encode: async () => new Uint32Array([1]),
+    encodeSync: () => new Uint32Array([1]),
+    encodeInto: async () => 1,
+    encodeDetailed: async () => ({ ids: new Uint32Array([1]) }),
+    decode: () => "probe",
+    tokenBytes: () => new Uint8Array([1]),
+    close: async () => {},
+  };
+  const publicRuntime = await fromResolvedVocab(handle, {
+    wasmModule: {},
+    warmup: true,
+    runtimeFactory: async (options) => {
+      received = options;
+      return runtime;
+    },
+  });
+  assert.equal(received.resolverTrusted, true);
+  assert.equal(received.resolverWarmup, true);
+  assert.equal(publicRuntime.encodeSync("probe")[0], 1);
+  publicRuntime.free();
 });
 
 test("ordinary bytes cannot select the trusted constructor", async () => {
