@@ -1449,14 +1449,26 @@ impl WasmTokenizer {
     #[cfg(feature = "htk")]
     #[wasm_bindgen(js_name = exportWorkerImage)]
     pub fn export_worker_image(&self) -> Result<Vec<u8>, JsError> {
+        #[cfg(feature = "cold-construction-profiling")]
+        crate::cold_construction::begin();
         #[cfg(feature = "opt-resolver-provenance")]
-        if let Some(image) = &self.resolver_worker_image {
-            return Ok(image.to_vec());
-        }
-        self.worker_model
+        let image = if let Some(image) = &self.resolver_worker_image {
+            Ok(image.to_vec())
+        } else {
+            self.worker_model
+                .as_ref()
+                .map(|model| model.to_bytes())
+                .ok_or_else(|| JsError::new("worker images require a compatible .htk source"))
+        };
+        #[cfg(not(feature = "opt-resolver-provenance"))]
+        let image = self
+            .worker_model
             .as_ref()
             .map(|model| model.to_bytes())
-            .ok_or_else(|| JsError::new("worker images require a compatible .htk source"))
+            .ok_or_else(|| JsError::new("worker images require a compatible .htk source"));
+        #[cfg(feature = "cold-construction-profiling")]
+        crate::cold_construction::finish();
+        image
     }
 
     #[cfg(feature = "htk")]

@@ -416,6 +416,39 @@ export async function createTierRuntime(options) {
     resolverTrusted = false,
     resolverWarmup = false,
   } = options;
+  const constructionObserver = options.constructionObserver;
+  if (constructionObserver !== undefined && typeof constructionObserver !== "function") {
+    throw new TypeError("constructionObserver must be a function");
+  }
+  const measureConstruction = (name, operation, describe = () => ({})) => {
+    if (constructionObserver === undefined) return operation();
+    const started = performance.now();
+    const result = operation();
+    constructionObserver(Object.freeze({
+      name,
+      milliseconds: performance.now() - started,
+      ...describe(result),
+    }));
+    return result;
+  };
+  const measureConstructionAsync = async (name, operation) => {
+    if (constructionObserver === undefined) return operation();
+    const started = performance.now();
+    const result = await operation();
+    constructionObserver(Object.freeze({
+      name,
+      milliseconds: performance.now() - started,
+    }));
+    return result;
+  };
+  const observeNativeConstructionProfile = (name) => {
+    const readProfile = unthreadedModule?.WasmTokenizer?.lastColdConstructionProfileJson;
+    if (constructionObserver === undefined || typeof readProfile !== "function") return;
+    constructionObserver(Object.freeze({
+      name,
+      profile: JSON.parse(readProfile()),
+    }));
+  };
   if (!(vocabulary instanceof Uint8Array)) {
     throw new TypeError("vocabulary must be a Uint8Array");
   }
@@ -431,16 +464,20 @@ export async function createTierRuntime(options) {
   if (format !== "tiktoken" && format !== "huggingface" && format !== "htk") {
     throw new TypeError(`unknown vocabulary format ${format}`);
   }
-  const single = await loadSingle(
-    unthreadedModuleUrl,
-    unthreadedModuleSource,
-    vocabulary,
-    scheme,
-    format,
-    unthreadedModule,
-    resolverTrusted,
-    resolverWarmup,
+  const single = await measureConstructionAsync(
+    "wasm-tokenizer-construction",
+    () => loadSingle(
+      unthreadedModuleUrl,
+      unthreadedModuleSource,
+      vocabulary,
+      scheme,
+      format,
+      unthreadedModule,
+      resolverTrusted,
+      resolverWarmup,
+    ),
   );
+  observeNativeConstructionProfile("wasm-tokenizer-native-profile");
   const decodeConfiguration =
     optimizationConfiguration.decode.assembly && typeof single.decodeAssemblyBytes !== "function"
       ? Object.freeze({
@@ -463,19 +500,34 @@ export async function createTierRuntime(options) {
           raw: true,
         })
       : optimizationConfiguration.decode;
-  const composedDecoder = createComposedDecoder(single, decodeConfiguration);
-  const reservedTokens = Object.freeze(
-    typeof single.reservedNamesJson === "function"
-      ? JSON.parse(single.reservedNamesJson())
-      : [],
+  const composedDecoder = measureConstruction(
+    "decode-router-construction",
+    () => createComposedDecoder(single, decodeConfiguration),
+  );
+  const reservedTokens = measureConstruction(
+    "reserved-token-materialization",
+    () => Object.freeze(
+      typeof single.reservedNamesJson === "function"
+        ? JSON.parse(single.reservedNamesJson())
+        : [],
+    ),
   );
   let sourceDigest;
   let workerImage;
   let workerImageError;
   if (format === "htk") {
     try {
-      sourceDigest = single.vocabularyDigest();
-      workerImage = single.exportWorkerImage();
+      sourceDigest = measureConstruction(
+        "source-digest-read",
+        () => single.vocabularyDigest(),
+        (digest) => ({ bytes: digest.byteLength }),
+      );
+      workerImage = measureConstruction(
+        "worker-image-serialization",
+        () => single.exportWorkerImage(),
+        (image) => ({ bytes: image.byteLength, builds: 1 }),
+      );
+      observeNativeConstructionProfile("worker-image-native-profile");
     } catch (error) {
       workerImageError = error;
     }
@@ -774,11 +826,14 @@ export async function createTierRuntime(options) {
     if (tier === "single") return residentSingleHandle;
     return registerShimRuntime(makeHandle(tier), residentSingleHandle);
   };
-  residentSingleHandle = makeHandle("single");
+  residentSingleHandle = measureConstruction(
+    "resident-handle-construction",
+    () => makeHandle("single"),
+  );
 
   let activeTier = initialTier;
   try {
-    await ensureTier(initialTier);
+    await measureConstructionAsync("initial-tier-activation", () => ensureTier(initialTier));
   } catch (error) {
     if (options.tier !== undefined && options.tier !== "auto") {
       await close();
@@ -793,5 +848,5 @@ export async function createTierRuntime(options) {
     });
   }
   lifecycle.targetReuses = 0;
-  return registeredHandle(activeTier);
+  return measureConstruction("active-handle-selection", () => registeredHandle(activeTier));
 }

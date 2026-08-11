@@ -27,12 +27,14 @@ const vocabulary = new Uint8Array(fs.readFileSync(vocabularyPath));
 const handle = mode === "untrusted"
   ? undefined
   : await createResolvedVocabLoader(async () => vocabulary)("pricing-fixture");
+const constructionStages = [];
 
 const resolverOptions = {
   wasmModule,
   moduleSource,
   tier: "single",
   warmup: mode === "trusted-touch",
+  constructionObserver: (stage) => constructionStages.push(stage),
   ...(mode === "resolver-control"
     ? {
         runtimeFactory: (options) => createTierRuntime({
@@ -71,6 +73,7 @@ try {
     tier: tokenizer.tier,
     vocabSize: tokenizer.vocabSize,
     constructionProfile,
+    constructionStages,
   })}\n`);
 } finally {
   tokenizer.free();

@@ -189,46 +189,63 @@ impl HtkWorkerModel {
     }
 
     pub(crate) fn to_bytes(&self) -> Vec<u8> {
-        let (backend_tag, backend_bytes) = encode_backend(&self.index.backend);
-        let mut bytes = Vec::with_capacity(
-            HEADER_LEN
-                + self.index.arena.len()
-                + self.index.bases.len() * 4
-                + self.index.intra.len() * 2
-                + backend_bytes.len()
-                + self.byte_ids.len() * 4,
-        );
-        bytes.extend_from_slice(&MAGIC);
-        bytes.extend_from_slice(&VERSION.to_le_bytes());
-        bytes.push(backend_tag);
-        bytes.push(pretokenizer_tag(self.pretokenizer));
-        bytes.push(self.index.block_shift);
-        bytes.extend_from_slice(&[0; 3]);
-        bytes.extend_from_slice(&self.index.vocab_size.to_le_bytes());
-        bytes.extend_from_slice(&self.index.key_count().to_le_bytes());
-        bytes.extend_from_slice(&self.omega.to_le_bytes());
-        bytes.extend_from_slice(&(self.index.arena.len() as u32).to_le_bytes());
-        bytes.extend_from_slice(&(self.index.bases.len() as u32).to_le_bytes());
-        bytes.extend_from_slice(&[0; 32]);
-        bytes.extend_from_slice(&self.source_digest);
-        bytes.extend_from_slice(&(self.index.intra.len() as u32).to_le_bytes());
-        bytes.extend_from_slice(&(backend_bytes.len() as u32).to_le_bytes());
-        bytes.extend_from_slice(&(self.byte_ids.len() as u32).to_le_bytes());
-        bytes.extend_from_slice(&0_u32.to_le_bytes());
-        debug_assert_eq!(bytes.len(), HEADER_LEN);
-        bytes.extend_from_slice(&self.index.arena);
-        for value in &self.index.bases {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-        for value in &self.index.intra {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-        bytes.extend_from_slice(&backend_bytes);
-        for value in self.byte_ids {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-        let digest = compute_digest(&bytes);
-        bytes[32..64].copy_from_slice(&digest);
+        let (backend_tag, backend_bytes) =
+            crate::cold_construction::measure("worker-image-backend-serialization", || {
+                encode_backend(&self.index.backend)
+            });
+        let mut bytes = crate::cold_construction::measure("worker-image-allocation", || {
+            Vec::with_capacity(
+                HEADER_LEN
+                    + self.index.arena.len()
+                    + self.index.bases.len() * 4
+                    + self.index.intra.len() * 2
+                    + backend_bytes.len()
+                    + self.byte_ids.len() * 4,
+            )
+        });
+        crate::cold_construction::measure("worker-image-header", || {
+            bytes.extend_from_slice(&MAGIC);
+            bytes.extend_from_slice(&VERSION.to_le_bytes());
+            bytes.push(backend_tag);
+            bytes.push(pretokenizer_tag(self.pretokenizer));
+            bytes.push(self.index.block_shift);
+            bytes.extend_from_slice(&[0; 3]);
+            bytes.extend_from_slice(&self.index.vocab_size.to_le_bytes());
+            bytes.extend_from_slice(&self.index.key_count().to_le_bytes());
+            bytes.extend_from_slice(&self.omega.to_le_bytes());
+            bytes.extend_from_slice(&(self.index.arena.len() as u32).to_le_bytes());
+            bytes.extend_from_slice(&(self.index.bases.len() as u32).to_le_bytes());
+            bytes.extend_from_slice(&[0; 32]);
+            bytes.extend_from_slice(&self.source_digest);
+            bytes.extend_from_slice(&(self.index.intra.len() as u32).to_le_bytes());
+            bytes.extend_from_slice(&(backend_bytes.len() as u32).to_le_bytes());
+            bytes.extend_from_slice(&(self.byte_ids.len() as u32).to_le_bytes());
+            bytes.extend_from_slice(&0_u32.to_le_bytes());
+            debug_assert_eq!(bytes.len(), HEADER_LEN);
+        });
+        crate::cold_construction::measure("worker-image-arena-copy", || {
+            bytes.extend_from_slice(&self.index.arena);
+        });
+        crate::cold_construction::measure("worker-image-offset-copy", || {
+            for value in &self.index.bases {
+                bytes.extend_from_slice(&value.to_le_bytes());
+            }
+            for value in &self.index.intra {
+                bytes.extend_from_slice(&value.to_le_bytes());
+            }
+        });
+        crate::cold_construction::measure("worker-image-backend-copy", || {
+            bytes.extend_from_slice(&backend_bytes);
+        });
+        crate::cold_construction::measure("worker-image-byte-id-copy", || {
+            for value in self.byte_ids {
+                bytes.extend_from_slice(&value.to_le_bytes());
+            }
+        });
+        crate::cold_construction::measure("worker-image-digest", || {
+            let digest = compute_digest(&bytes);
+            bytes[32..64].copy_from_slice(&digest);
+        });
         bytes
     }
 

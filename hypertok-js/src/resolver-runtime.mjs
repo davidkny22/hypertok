@@ -9,6 +9,7 @@ export async function fromResolvedVocab(handle, {
   workerCount,
   optimizations,
   warmup = false,
+  constructionObserver,
   runtimeFactory = createTierRuntime,
 } = {}) {
   if (wasmModule === null || typeof wasmModule !== "object") {
@@ -25,6 +26,14 @@ export async function fromResolvedVocab(handle, {
     optimizations,
     resolverTrusted: true,
     resolverWarmup: warmup,
+    constructionObserver,
   });
-  return createPublicRuntime(runtime, bytes);
+  if (constructionObserver === undefined) return createPublicRuntime(runtime, bytes);
+  const started = performance.now();
+  const publicRuntime = createPublicRuntime(runtime, bytes);
+  constructionObserver(Object.freeze({
+    name: "public-handle-construction",
+    milliseconds: performance.now() - started,
+  }));
+  return publicRuntime;
 }
