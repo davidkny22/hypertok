@@ -1347,6 +1347,11 @@ impl WasmTokenizer {
     ) -> Result<js_sys::Uint32Array, JsError> {
         let mut scratch = std::mem::replace(&mut self.scratch, WasmScratch::new());
         let result = (|| {
+            #[cfg(feature = "opt-level-select")]
+            let scalar_scanner =
+                crate::pretokenize::fast::level_select::validate_and_select_scalar(input)
+                    .map_err(|error| JsError::new(&format!("input is not valid UTF-8: {error}")))?;
+            #[cfg(not(feature = "opt-level-select"))]
             std::str::from_utf8(input)
                 .map_err(|error| JsError::new(&format!("input is not valid UTF-8: {error}")))?;
             if !self.chunking_available {
