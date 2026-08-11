@@ -294,27 +294,36 @@ pub fn load_htk_slice(bytes: &[u8]) -> Result<LoadedHtk, HtkLoadError> {
             }
         }
     };
-    let worker_transfer_pretokenizer = match &tokenizer {
-        HtkTokenizer::ByteBpe(tokenizer)
-            if priorities.is_none() && worker_transfer_pipeline_supported(&file) =>
-        {
-            Some(tokenizer.pretokenizer_type())
+    let worker_transfer_pretokenizer = crate::cold_construction::measure(
+        "worker-transfer-routing",
+        || match &tokenizer {
+            HtkTokenizer::ByteBpe(tokenizer)
+                if priorities.is_none() && worker_transfer_pipeline_supported(&file) =>
+            {
+                Some(tokenizer.pretokenizer_type())
+            }
+            _ => None,
+        },
+    );
+    let worker_unsupported_patterns =
+        crate::cold_construction::measure("worker-unsupported-patterns", || {
+            specials
+                .iter()
+                .filter(|special| !special.bytes.is_empty())
+                .map(|special| special.bytes.clone().into_boxed_slice())
+                .collect()
+        });
+    let (prepend_ids, append_ids) = crate::cold_construction::measure("postprocessing-ids", || {
+        let mut prepend_ids = Vec::new();
+        let mut append_ids = Vec::new();
+        for (position, id) in post {
+            match position {
+                PostPosition::Prepend => prepend_ids.push(id),
+                PostPosition::Append => append_ids.push(id),
+            }
         }
-        _ => None,
-    };
-    let worker_unsupported_patterns = specials
-        .iter()
-        .filter(|special| !special.bytes.is_empty())
-        .map(|special| special.bytes.clone().into_boxed_slice())
-        .collect();
-    let mut prepend_ids = Vec::new();
-    let mut append_ids = Vec::new();
-    for (position, id) in post {
-        match position {
-            PostPosition::Prepend => prepend_ids.push(id),
-            PostPosition::Append => append_ids.push(id),
-        }
-    }
+        (prepend_ids, append_ids)
+    });
     Ok(LoadedHtk {
         tokenizer,
         lookup_index,
@@ -371,16 +380,24 @@ fn build_byte_bpe(
     priorities: Option<&[u32]>,
     #[cfg(feature = "opt-prebuilt-pair-ranks")] prebuilt_pair_ranks: Option<PrebuiltPairEntries>,
 ) -> Result<Tokenizer, HtkLoadError> {
-    let base = read_byte_base(file);
-    for (byte, &id) in base.iter().enumerate() {
-        if vocab[id as usize].as_ref() != [byte as u8] {
-            return Err(HtkLoadError::InvalidModel(
-                "BASE id does not denote its indexed byte",
-            ));
+    let base = crate::cold_construction::measure("base-semantic-validation", || {
+        let base = read_byte_base(file);
+        for (byte, &id) in base.iter().enumerate() {
+            if vocab[id as usize].as_ref() != [byte as u8] {
+                return Err(HtkLoadError::InvalidModel(
+                    "BASE id does not denote its indexed byte",
+                ));
+            }
         }
-    }
-    let special_ids: BTreeSet<u32> = specials.iter().map(|special| special.id).collect();
-    validate_key_set(&vocab, &special_ids, &BTreeSet::new())?;
+        Ok::<_, HtkLoadError>(base)
+    })?;
+    let special_ids: BTreeSet<u32> =
+        crate::cold_construction::measure("special-id-set", || {
+            specials.iter().map(|special| special.id).collect()
+        });
+    crate::cold_construction::measure("vocabulary-key-set-validation", || {
+        validate_key_set(&vocab, &special_ids, &BTreeSet::new())
+    })?;
     if file.header().flags & BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG != 0 && priorities.is_none() {
         return Err(HtkLoadError::InvalidModel(
             "exhaustive split reconstruction requires PRIORITY",
@@ -411,8 +428,10 @@ fn build_byte_bpe(
                 })
             }
         })?;
-        let remapping = ByteRemapping::from_byte_vocab(&vocab)
-            .map_err(|_| HtkLoadError::InvalidModel("incomplete byte BASE"))?;
+        let remapping = crate::cold_construction::measure("byte-remapping", || {
+            ByteRemapping::from_byte_vocab(&vocab)
+        })
+        .map_err(|_| HtkLoadError::InvalidModel("incomplete byte BASE"))?;
         #[cfg(feature = "opt-resident-diet")]
         {
             Tokenizer::new_ranked_token_views(merges, vocab, remapping)
@@ -422,8 +441,10 @@ fn build_byte_bpe(
             Tokenizer::new_ranked(merges, vocab, remapping)
         }
     } else {
-        let remapping = ByteRemapping::from_byte_vocab(&vocab)
-            .map_err(|_| HtkLoadError::InvalidModel("incomplete byte BASE"))?;
+        let remapping = crate::cold_construction::measure("byte-remapping", || {
+            ByteRemapping::from_byte_vocab(&vocab)
+        })
+        .map_err(|_| HtkLoadError::InvalidModel("incomplete byte BASE"))?;
         #[cfg(feature = "opt-fused-pair-ranks")]
         {
             #[cfg(feature = "opt-prebuilt-pair-ranks")]
@@ -452,11 +473,15 @@ fn build_byte_bpe(
                 Some(pair_ranks) => {
                     #[cfg(feature = "opt-resident-diet")]
                     {
-                        Tokenizer::new_pair_ranks_token_views(pair_ranks, vocab, remapping)
+                        crate::cold_construction::measure("tokenizer-assembly", || {
+                            Tokenizer::new_pair_ranks_token_views(pair_ranks, vocab, remapping)
+                        })
                     }
                     #[cfg(not(feature = "opt-resident-diet"))]
                     {
-                        Tokenizer::new_pair_ranks(pair_ranks, vocab, remapping)
+                        crate::cold_construction::measure("tokenizer-assembly", || {
+                            Tokenizer::new_pair_ranks(pair_ranks, vocab, remapping)
+                        })
                     }
                 }
                 None => {
@@ -466,11 +491,15 @@ fn build_byte_bpe(
                         })?;
                     #[cfg(feature = "opt-resident-diet")]
                     {
-                        Tokenizer::new_token_views(merges, vocab, remapping)
+                        crate::cold_construction::measure("tokenizer-assembly", || {
+                            Tokenizer::new_token_views(merges, vocab, remapping)
+                        })
                     }
                     #[cfg(not(feature = "opt-resident-diet"))]
                     {
-                        Tokenizer::new(merges, vocab, remapping)
+                        crate::cold_construction::measure("tokenizer-assembly", || {
+                            Tokenizer::new(merges, vocab, remapping)
+                        })
                     }
                 }
             }
@@ -525,9 +554,11 @@ fn build_byte_bpe(
 #[cfg(feature = "opt-prebuilt-pair-ranks")]
 pub fn build_prebuilt_pair_image(bytes: &[u8]) -> Result<Vec<u8>, HtkLoadError> {
     let loaded = load_htk_slice(bytes)?;
-    let pretokenizer = loaded.worker_transfer_pretokenizer.ok_or(HtkLoadError::Unsupported(
-        "prebuilt pair ranks require a worker-compatible byte-BPE vocabulary",
-    ))?;
+    let pretokenizer = loaded
+        .worker_transfer_pretokenizer
+        .ok_or(HtkLoadError::Unsupported(
+            "prebuilt pair ranks require a worker-compatible byte-BPE vocabulary",
+        ))?;
     let model = HtkWorkerModel::new(
         loaded.lookup_index,
         pretokenizer,
@@ -551,50 +582,60 @@ fn hydrate_prebuilt_pair_ranks<T: AsRef<[u8]>>(
     let entries = prebuilt.into_entries();
     let pair_ranks = PairRankTable::from_packed_entries(&entries, byte_remapping, vocab.len())
         .map_err(HtkLoadError::InvalidModel)?;
-    let mut products = vec![false; vocab.len()];
-    let mut base_ids = vec![false; vocab.len()];
-    for &id in base {
-        base_ids[id as usize] = true;
-    }
-    for (left, right, merged) in pair_ranks.entries() {
-        let left_id = left.0 as usize;
-        let right_id = right.0 as usize;
-        let merged_id = merged.0 as usize;
-        if merged_id >= vocab.len()
-            || products[merged_id]
-            || base_ids[merged_id]
-            || special_ids.contains(&merged.0)
-            || left_id >= merged_id
-            || right_id >= merged_id
-            || special_ids.contains(&left.0)
-            || special_ids.contains(&right.0)
-            || pair_ranks.rank(left, right) != merged.0
-        {
-            return Err(HtkLoadError::InvalidModel(
-                "prebuilt pair rank has invalid token identities",
-            ));
+    let (mut products, base_ids) =
+        crate::cold_construction::measure("pair-semantic-state-allocation", || {
+            let products = vec![false; vocab.len()];
+            let mut base_ids = vec![false; vocab.len()];
+            for &id in base {
+                base_ids[id as usize] = true;
+            }
+            (products, base_ids)
+        });
+    crate::cold_construction::measure("pair-entry-semantic-checks", || {
+        for (left, right, merged) in pair_ranks.entries() {
+            let left_id = left.0 as usize;
+            let right_id = right.0 as usize;
+            let merged_id = merged.0 as usize;
+            if merged_id >= vocab.len()
+                || products[merged_id]
+                || base_ids[merged_id]
+                || special_ids.contains(&merged.0)
+                || left_id >= merged_id
+                || right_id >= merged_id
+                || special_ids.contains(&left.0)
+                || special_ids.contains(&right.0)
+                || pair_ranks.rank(left, right) != merged.0
+            {
+                return Err(HtkLoadError::InvalidModel(
+                    "prebuilt pair rank has invalid token identities",
+                ));
+            }
+            let left_bytes = vocab[left_id].as_ref();
+            let right_bytes = vocab[right_id].as_ref();
+            let merged_bytes = vocab[merged_id].as_ref();
+            if merged_bytes.len() != left_bytes.len() + right_bytes.len()
+                || !merged_bytes.starts_with(left_bytes)
+                || !merged_bytes.ends_with(right_bytes)
+            {
+                return Err(HtkLoadError::InvalidModel(
+                    "prebuilt pair rank does not match token bytes",
+                ));
+            }
+            products[merged_id] = true;
         }
-        let left_bytes = vocab[left_id].as_ref();
-        let right_bytes = vocab[right_id].as_ref();
-        let merged_bytes = vocab[merged_id].as_ref();
-        if merged_bytes.len() != left_bytes.len() + right_bytes.len()
-            || !merged_bytes.starts_with(left_bytes)
-            || !merged_bytes.ends_with(right_bytes)
-        {
-            return Err(HtkLoadError::InvalidModel(
-                "prebuilt pair rank does not match token bytes",
-            ));
+        Ok::<_, HtkLoadError>(())
+    })?;
+    crate::cold_construction::measure("pair-coverage-checks", || {
+        for (id, token) in vocab.iter().enumerate() {
+            let expected = token.as_ref().len() >= 2 && !special_ids.contains(&(id as u32));
+            if products[id] != expected {
+                return Err(HtkLoadError::InvalidModel(
+                    "prebuilt pair ranks do not cover the vocabulary",
+                ));
+            }
         }
-        products[merged_id] = true;
-    }
-    for (id, token) in vocab.iter().enumerate() {
-        let expected = token.as_ref().len() >= 2 && !special_ids.contains(&(id as u32));
-        if products[id] != expected {
-            return Err(HtkLoadError::InvalidModel(
-                "prebuilt pair ranks do not cover the vocabulary",
-            ));
-        }
-    }
+        Ok::<_, HtkLoadError>(())
+    })?;
     Ok(pair_ranks)
 }
 
@@ -605,14 +646,16 @@ fn reconstruct_id_pair_ranks<T: AsRef<[u8]>>(
     specials: &BTreeSet<u32>,
     byte_remapping: Option<&ByteRemapping>,
 ) -> Result<Option<PairRankTable>, HtkLoadError> {
-    let merge_count = vocab
-        .iter()
-        .enumerate()
-        .filter(|(id, token)| token.as_ref().len() >= 2 && !specials.contains(&(*id as u32)))
-        .count();
-    let Some(mut pair_ranks) =
+    let merge_count = crate::cold_construction::measure("replay-rule-count", || {
+        vocab
+            .iter()
+            .enumerate()
+            .filter(|(id, token)| token.as_ref().len() >= 2 && !specials.contains(&(*id as u32)))
+            .count()
+    });
+    let Some(mut pair_ranks) = crate::cold_construction::measure("pair-table-allocation", || {
         PairRankTable::with_capacity(byte_remapping, vocab.len(), merge_count)
-    else {
+    }) else {
         return Ok(None);
     };
     let mut scratch = MergeScratch::default();

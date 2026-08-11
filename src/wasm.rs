@@ -274,28 +274,28 @@ impl WasmTokenizer {
                 ));
             }
         };
-        let worker_model = loaded
-            .worker_transfer_pretokenizer
-            .map(|pretokenizer| {
-                #[cfg(feature = "opt-cold-diet")]
-                let model = HtkWorkerModel::new_transfer_source(
-                    loaded.lookup_index,
-                    pretokenizer,
-                    loaded.omega,
-                    loaded.digest,
-                );
-                #[cfg(not(feature = "opt-cold-diet"))]
-                let model = HtkWorkerModel::new(
-                    loaded.lookup_index,
-                    pretokenizer,
-                    loaded.omega,
-                    loaded.digest,
-                );
-                model
-                .map(Arc::new)
-                .map_err(js_error)
-            })
-            .transpose()?;
+        let worker_model = crate::cold_construction::measure("worker-model-construction", || {
+            loaded
+                .worker_transfer_pretokenizer
+                .map(|pretokenizer| {
+                    #[cfg(feature = "opt-cold-diet")]
+                    let model = HtkWorkerModel::new_transfer_source(
+                        loaded.lookup_index,
+                        pretokenizer,
+                        loaded.omega,
+                        loaded.digest,
+                    );
+                    #[cfg(not(feature = "opt-cold-diet"))]
+                    let model = HtkWorkerModel::new(
+                        loaded.lookup_index,
+                        pretokenizer,
+                        loaded.omega,
+                        loaded.digest,
+                    );
+                    model.map(Arc::new).map_err(js_error)
+                })
+                .transpose()
+        })?;
         #[cfg(feature = "opt-resident-diet")]
         let token_lengths = crate::cold_construction::measure("token-lengths", || {
             match &worker_model {
@@ -308,7 +308,7 @@ impl WasmTokenizer {
             owned_token_lengths(&tokenizer).map(|value| value.0)
         })?;
         let chunking_available = worker_model.is_some();
-        let tokenizer = Self {
+        let tokenizer = crate::cold_construction::measure("wasm-tokenizer-assembly", || Self {
             tokenizer: *tokenizer,
             #[cfg(feature = "decode-profiling")]
             last_decode_profile: None,
@@ -336,7 +336,7 @@ impl WasmTokenizer {
             worker_unsupported_patterns: loaded.worker_unsupported_patterns.into(),
             reserved_catalog: loaded.reserved_catalog,
             reserved_byte_cache: loaded.reserved_byte_cache,
-        };
+        });
         crate::cold_construction::finish();
         Ok(tokenizer)
     }
