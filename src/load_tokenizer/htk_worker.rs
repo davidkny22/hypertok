@@ -17,6 +17,13 @@ const BACKEND_TABLE: u8 = 0;
 const BACKEND_PERFECT: u8 = 1;
 const PAIR_ID_BITS: u32 = 21;
 
+#[cfg(feature = "opt-prebuilt-pair-ranks")]
+#[path = "htk_pair_image.rs"]
+mod pair_image;
+
+#[cfg(feature = "opt-prebuilt-pair-ranks")]
+pub(crate) use pair_image::PrebuiltPairEntries;
+
 #[derive(Debug)]
 pub(crate) enum WorkerImageError {
     Truncated,
@@ -39,6 +46,7 @@ pub(crate) enum WorkerImageError {
     DuplicateMergePair,
     PairIdOverflow,
     PairTableClustering,
+    MissingPairTable,
     Table(TableImageError),
     Perfect(ImageError),
 }
@@ -93,6 +101,9 @@ impl Display for WorkerImageError {
             }
             Self::PairTableClustering => {
                 formatter.write_str("worker model pair table clusters excessively")
+            }
+            Self::MissingPairTable => {
+                formatter.write_str("worker model has no resident pair table")
             }
             Self::Table(error) => write!(formatter, "invalid worker table image: {error}"),
             Self::Perfect(error) => write!(formatter, "invalid worker perfect index: {error}"),
@@ -386,7 +397,7 @@ impl HtkWorkerEncoder {
     }
 }
 
-struct WorkerPairTable {
+pub(crate) struct WorkerPairTable {
     slots: Box<[u64]>,
     mask: usize,
     shift: u32,

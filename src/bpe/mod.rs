@@ -214,6 +214,34 @@ pub(crate) struct PairRankTable {
 pub(super) const PAIR_ID_BITS: u32 = 21;
 
 impl PairRankTable {
+    #[cfg(feature = "opt-prebuilt-pair-ranks")]
+    pub(crate) fn from_packed_entries(
+        entries: &[u64],
+        byte_remapping: Option<&ByteRemapping>,
+        vocab_len: usize,
+    ) -> Result<Self, &'static str> {
+        let mut table = Self::with_capacity(byte_remapping, vocab_len, entries.len())
+            .ok_or("prebuilt pair entries exceed table capacity")?;
+        let id_mask = (1_u64 << PAIR_ID_BITS) - 1;
+        for &packed in entries {
+            if packed == u64::MAX {
+                return Err("prebuilt pair entries contain the empty sentinel");
+            }
+            let merged = TokenId((packed & id_mask) as u32);
+            let key = packed >> PAIR_ID_BITS;
+            let left = TokenId((key >> PAIR_ID_BITS) as u32);
+            let right = TokenId((key & id_mask) as u32);
+            if left.0 as usize >= vocab_len
+                || right.0 as usize >= vocab_len
+                || merged.0 as usize >= vocab_len
+                || !table.insert(left, right, merged)
+            {
+                return Err("prebuilt pair entries contain an invalid pair");
+            }
+        }
+        Ok(table)
+    }
+
     /// Build the two-level table, or `None` when this vocabulary cannot use
     /// it (IDs too large for the packed key, or pathological clustering in
     /// the flat table) , the caller then falls back to the hashbrown map.

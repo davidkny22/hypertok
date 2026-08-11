@@ -6,6 +6,8 @@
 pub use super::htk_index::{HtkIndexError, HtkLookupIndex};
 use super::htk_reserved::{HtkReservedCatalog, HtkReservedDefinition, HtkReservedPolicy};
 pub use super::htk_reserved::{HtkReservedEncoding, HtkReservedError};
+#[cfg(feature = "opt-prebuilt-pair-ranks")]
+use super::htk_worker::{HtkWorkerModel, PrebuiltPairEntries};
 #[cfg(feature = "opt-fused-pair-ranks")]
 use crate::bpe::PairRankTable;
 use crate::bpe::TokenBytes;
@@ -26,6 +28,9 @@ use rustc_hash::FxBuildHasher;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::sync::Arc;
+
+#[cfg(feature = "opt-prebuilt-pair-ranks")]
+pub const PREBUILT_PAIR_RANKS_SECTION_ID: u32 = 1025;
 
 #[cfg(test)]
 #[path = "htk_replay_tests.rs"]
@@ -228,6 +233,14 @@ pub fn load_htk_slice(bytes: &[u8]) -> Result<LoadedHtk, HtkLoadError> {
                 priorities,
             ))
         })?;
+    #[cfg(feature = "opt-prebuilt-pair-ranks")]
+    let prebuilt_pair_ranks = file
+        .section(PREBUILT_PAIR_RANKS_SECTION_ID)
+        .map(|section| {
+            PrebuiltPairEntries::from_bytes(section, file.header().vocab_size)
+                .map_err(|_| HtkLoadError::InvalidModel("invalid prebuilt pair-rank image"))
+        })
+        .transpose()?;
     let lookup_index = crate::cold_construction::measure("lookup-index", || {
         HtkLookupIndex::build(&file, &special_ids, &byte_fallback_ids)
     })?;
@@ -247,6 +260,8 @@ pub fn load_htk_slice(bytes: &[u8]) -> Result<LoadedHtk, HtkLoadError> {
                 vocab,
                 &specials,
                 priorities.as_deref(),
+                #[cfg(feature = "opt-prebuilt-pair-ranks")]
+                prebuilt_pair_ranks,
             )?))
         }
         StructuralClass::SentencePieceBpe => {
@@ -350,6 +365,7 @@ fn build_byte_bpe(
     vocab: ByteVocab,
     specials: &[Special],
     priorities: Option<&[u32]>,
+    #[cfg(feature = "opt-prebuilt-pair-ranks")] prebuilt_pair_ranks: Option<PrebuiltPairEntries>,
 ) -> Result<Tokenizer, HtkLoadError> {
     let base = read_byte_base(file);
     for (byte, &id) in base.iter().enumerate() {
@@ -406,6 +422,25 @@ fn build_byte_bpe(
             .map_err(|_| HtkLoadError::InvalidModel("incomplete byte BASE"))?;
         #[cfg(feature = "opt-fused-pair-ranks")]
         {
+            #[cfg(feature = "opt-prebuilt-pair-ranks")]
+            let pair_ranks = match prebuilt_pair_ranks {
+                Some(prebuilt) => Some(crate::cold_construction::measure(
+                    "prebuilt-pair-validation",
+                    || {
+                        hydrate_prebuilt_pair_ranks(
+                            prebuilt,
+                            &vocab,
+                            &base,
+                            &special_ids,
+                            remapping.as_ref(),
+                        )
+                    },
+                )?),
+                None => crate::cold_construction::measure("merge-replay", || {
+                    reconstruct_id_pair_ranks(&vocab, &base, &special_ids, remapping.as_ref())
+                })?,
+            };
+            #[cfg(not(feature = "opt-prebuilt-pair-ranks"))]
             let pair_ranks = crate::cold_construction::measure("merge-replay", || {
                 reconstruct_id_pair_ranks(&vocab, &base, &special_ids, remapping.as_ref())
             })?;
@@ -481,6 +516,82 @@ fn build_byte_bpe(
     #[cfg(feature = "opt-resident-diet")]
     tokenizer.discard_redundant_id_merges();
     Ok(tokenizer)
+}
+
+#[cfg(feature = "opt-prebuilt-pair-ranks")]
+pub fn build_prebuilt_pair_image(bytes: &[u8]) -> Result<Vec<u8>, HtkLoadError> {
+    let loaded = load_htk_slice(bytes)?;
+    let pretokenizer = loaded.worker_transfer_pretokenizer.ok_or(HtkLoadError::Unsupported(
+        "prebuilt pair ranks require a worker-compatible byte-BPE vocabulary",
+    ))?;
+    let model = HtkWorkerModel::new(
+        loaded.lookup_index,
+        pretokenizer,
+        loaded.omega,
+        loaded.digest,
+    )
+    .map_err(|_| HtkLoadError::InvalidModel("could not build prebuilt pair ranks"))?;
+    model
+        .to_prebuilt_pair_bytes()
+        .map_err(|_| HtkLoadError::InvalidModel("could not serialize prebuilt pair ranks"))
+}
+
+#[cfg(feature = "opt-prebuilt-pair-ranks")]
+fn hydrate_prebuilt_pair_ranks<T: AsRef<[u8]>>(
+    prebuilt: PrebuiltPairEntries,
+    vocab: &[T],
+    base: &[u32; 256],
+    special_ids: &BTreeSet<u32>,
+    byte_remapping: Option<&ByteRemapping>,
+) -> Result<PairRankTable, HtkLoadError> {
+    let entries = prebuilt.into_entries();
+    let pair_ranks = PairRankTable::from_packed_entries(&entries, byte_remapping, vocab.len())
+        .map_err(HtkLoadError::InvalidModel)?;
+    let mut products = vec![false; vocab.len()];
+    let mut base_ids = vec![false; vocab.len()];
+    for &id in base {
+        base_ids[id as usize] = true;
+    }
+    for (left, right, merged) in pair_ranks.entries() {
+        let left_id = left.0 as usize;
+        let right_id = right.0 as usize;
+        let merged_id = merged.0 as usize;
+        if merged_id >= vocab.len()
+            || products[merged_id]
+            || base_ids[merged_id]
+            || special_ids.contains(&merged.0)
+            || left_id >= merged_id
+            || right_id >= merged_id
+            || special_ids.contains(&left.0)
+            || special_ids.contains(&right.0)
+            || pair_ranks.rank(left, right) != merged.0
+        {
+            return Err(HtkLoadError::InvalidModel(
+                "prebuilt pair rank has invalid token identities",
+            ));
+        }
+        let left_bytes = vocab[left_id].as_ref();
+        let right_bytes = vocab[right_id].as_ref();
+        let merged_bytes = vocab[merged_id].as_ref();
+        if merged_bytes.len() != left_bytes.len() + right_bytes.len()
+            || !merged_bytes.starts_with(left_bytes)
+            || !merged_bytes.ends_with(right_bytes)
+        {
+            return Err(HtkLoadError::InvalidModel(
+                "prebuilt pair rank does not match token bytes",
+            ));
+        }
+        products[merged_id] = true;
+    }
+    for (id, token) in vocab.iter().enumerate() {
+        let expected = token.as_ref().len() >= 2 && !special_ids.contains(&(id as u32));
+        if products[id] != expected {
+            return Err(HtkLoadError::InvalidModel(
+                "prebuilt pair ranks do not cover the vocabulary",
+            ));
+        }
+    }
+    Ok(pair_ranks)
 }
 
 #[cfg(feature = "opt-fused-pair-ranks")]
