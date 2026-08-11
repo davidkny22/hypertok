@@ -2,13 +2,21 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { brotliDecompressSync } from "node:zlib";
 
 import { createResolvedVocabLoader } from "../../hypertok-js/src/resolver-provenance.mjs";
 import { fromResolvedVocab } from "../../hypertok-js/src/resolver-runtime.mjs";
 import { createTierRuntime } from "../../hypertok-js/src/tier-runtime.mjs";
 
-const [runtimePath, modulePath, wasmPath, vocabularyPath, mode, runtimeOptionsJson] =
-  process.argv.slice(2);
+const [
+  runtimePath,
+  modulePath,
+  wasmPath,
+  vocabularyPath,
+  mode,
+  runtimeOptionsJson,
+  sampleOptionsJson,
+] = process.argv.slice(2);
 if (
   !runtimePath ||
   !modulePath ||
@@ -24,9 +32,24 @@ if (
 const runtimeModule = await import(pathToFileURL(path.resolve(runtimePath)).href);
 const wasmModule = await import(pathToFileURL(path.resolve(modulePath)).href);
 const moduleSource = new Uint8Array(fs.readFileSync(wasmPath));
-const vocabulary = new Uint8Array(fs.readFileSync(vocabularyPath));
 const runtimeOptions = JSON.parse(runtimeOptionsJson ?? "{}");
-const handle = mode === "untrusted"
+const sampleOptions = JSON.parse(sampleOptionsJson ?? "{}");
+const storedVocabulary = new Uint8Array(fs.readFileSync(vocabularyPath));
+let decompressionMilliseconds = 0;
+const prepareVocabulary = () => {
+  if (sampleOptions.compression === undefined || sampleOptions.compression === "none") {
+    return storedVocabulary;
+  }
+  if (sampleOptions.compression === "brotli") {
+    const started = performance.now();
+    const decompressed = new Uint8Array(brotliDecompressSync(storedVocabulary));
+    decompressionMilliseconds += performance.now() - started;
+    return decompressed;
+  }
+  throw new TypeError(`unknown vocabulary compression ${sampleOptions.compression}`);
+};
+let vocabulary = sampleOptions.includePreparation ? undefined : prepareVocabulary();
+let handle = mode === "untrusted" || sampleOptions.includePreparation
   ? undefined
   : await createResolvedVocabLoader(async () => vocabulary)("pricing-fixture");
 const constructionStages = [];
@@ -49,6 +72,10 @@ const resolverOptions = {
 };
 
 const started = performance.now();
+vocabulary ??= prepareVocabulary();
+if (mode !== "untrusted" && handle === undefined) {
+  handle = await createResolvedVocabLoader(async () => vocabulary)("pricing-fixture");
+}
 const tokenizer = mode !== "untrusted"
   ? await fromResolvedVocab(handle, resolverOptions)
   : await runtimeModule.fromBytes(vocabulary, {
@@ -75,6 +102,11 @@ try {
     tokenCount: ids.length,
     tier: tokenizer.tier,
     vocabSize: tokenizer.vocabSize,
+    storedBytes: storedVocabulary.byteLength,
+    vocabularyBytes: vocabulary.byteLength,
+    preparationIncluded: sampleOptions.includePreparation === true,
+    compression: sampleOptions.compression ?? "none",
+    decompressionMilliseconds,
     constructionProfile,
     constructionStages,
   })}\n`);

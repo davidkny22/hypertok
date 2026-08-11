@@ -32,14 +32,16 @@ const sampleScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "tr
 const rows = [];
 
 function runSample(vocabulary, configuration, index) {
+  const vocabularyPath = configuration.vocabularyPaths?.[vocabulary.id] ?? vocabulary.path;
   const run = childProcess.spawnSync(process.execPath, [
     sampleScript,
     runtimePath,
     configuration.module,
     configuration.wasm,
-    vocabulary.path,
+    vocabularyPath,
     "trusted",
     JSON.stringify(configuration.options ?? {}),
+    JSON.stringify(configuration.sampleOptions ?? {}),
   ], {
     encoding: "utf8",
     windowsHide: true,
