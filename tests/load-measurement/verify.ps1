@@ -15,7 +15,7 @@ $o200k = [System.IO.Path]::GetFullPath((Join-Path $root $O200kPath))
 $llama = [System.IO.Path]::GetFullPath((Join-Path $root $LlamaPath))
 $expected = @{
     $o200k = "a583ea153eee0f3547df36f1ad2f38e3d1e92c16942f4ddbafa4b7a9979cb111"
-    $llama = "059d0ebbfb48745fea77a6ac81673444e6c3d9088e94caef1d768083e54995d0"
+    $llama = "18348c6462d283c83f3ca75a402764d3ff2590760f641f2e44133919a0ece06b"
 }
 
 foreach ($path in @($o200k, $llama)) {
