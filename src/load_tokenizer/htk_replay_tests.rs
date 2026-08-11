@@ -15,7 +15,7 @@ fn reused_symbol_scratch_preserves_the_ordered_merge_graph() {
     let base = std::array::from_fn(|byte| byte as u32);
     let specials = BTreeSet::new();
 
-    let pair_ranks = reconstruct_id_pair_ranks(&vocab, &base, &specials, None)
+    let pair_ranks = reconstruct_id_pair_ranks(&vocab, &base, &specials, None, false, false)
         .expect("valid ordered vocabulary")
         .expect("small vocabulary supports direct pair ranks");
     let merges = reconstruct_id_merges(&vocab, &base, &specials)
