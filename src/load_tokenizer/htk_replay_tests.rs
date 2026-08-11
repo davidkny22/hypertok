@@ -1,5 +1,8 @@
+#[cfg(feature = "opt-merge-replay-fusion")]
 use super::{reconstruct_id_merges, reconstruct_id_pair_ranks};
+#[cfg(feature = "opt-merge-replay-fusion")]
 use crate::token::TokenId;
+#[cfg(feature = "opt-merge-replay-fusion")]
 use std::collections::BTreeSet;
 
 #[cfg(feature = "opt-merge-replay-fusion")]
