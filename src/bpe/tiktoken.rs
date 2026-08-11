@@ -384,6 +384,11 @@ impl Tokenizer {
         Self::from_pair_rank_table(pair_ranks, vocab, byte_remapping)
     }
 
+    #[cfg(feature = "opt-prebuilt-built-state")]
+    pub(crate) fn prebuilt_pair_slot_image(&self) -> Option<(usize, Vec<(u32, u64)>)> {
+        self.pair_ranks.as_deref()?.prebuilt_slot_image()
+    }
+
     #[cfg(feature = "opt-fused-pair-ranks")]
     fn from_pair_rank_table(
         pair_ranks: PairRankTable,

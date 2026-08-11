@@ -24,6 +24,13 @@ mod pair_image;
 #[cfg(feature = "opt-prebuilt-pair-ranks")]
 pub(crate) use pair_image::PrebuiltPairEntries;
 
+#[cfg(feature = "opt-prebuilt-built-state")]
+#[path = "htk_built_state.rs"]
+mod built_state;
+
+#[cfg(feature = "opt-prebuilt-built-state")]
+pub(crate) use built_state::{PrebuiltBuiltState, PrebuiltPairSlots};
+
 #[derive(Debug)]
 pub(crate) enum WorkerImageError {
     Truncated,

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use hypertok_format::{HashScheme, SectionId, ValidatedFile};
 use hypertok_hash::{
     DEFAULT_TABLE_LOAD_PERMILLE, FingerprintTable, HashImage, ImageError, TableBuildError,
-    TableKey, fingerprint,
+    TableImageError, TableKey, fingerprint,
 };
 
 #[derive(Debug)]
@@ -26,6 +26,9 @@ pub enum HtkIndexError {
     PayloadIdOutOfBounds { id: u32, vocab_size: u32 },
     OffsetOverflow,
     Table(TableBuildError),
+    TableImage(TableImageError),
+    TableMissingKey(u32),
+    UnsupportedTableImageScheme,
 }
 
 impl Display for HtkIndexError {
@@ -58,6 +61,16 @@ impl Display for HtkIndexError {
             ),
             Self::OffsetOverflow => formatter.write_str("runtime offset construction overflow"),
             Self::Table(error) => write!(formatter, "runtime lookup table error: {error}"),
+            Self::TableImage(error) => write!(formatter, "prebuilt lookup table error: {error}"),
+            Self::TableMissingKey(id) => {
+                write!(
+                    formatter,
+                    "prebuilt lookup table does not resolve token id {id}"
+                )
+            }
+            Self::UnsupportedTableImageScheme => {
+                formatter.write_str("prebuilt lookup table requires hash scheme 0")
+            }
         }
     }
 }
@@ -67,6 +80,7 @@ impl Error for HtkIndexError {
         match self {
             Self::HashImage(error) => Some(error),
             Self::Table(error) => Some(error),
+            Self::TableImage(error) => Some(error),
             _ => None,
         }
     }
@@ -75,6 +89,12 @@ impl Error for HtkIndexError {
 impl From<TableBuildError> for HtkIndexError {
     fn from(error: TableBuildError) -> Self {
         Self::Table(error)
+    }
+}
+
+impl From<TableImageError> for HtkIndexError {
+    fn from(error: TableImageError) -> Self {
+        Self::TableImage(error)
     }
 }
 
@@ -160,6 +180,64 @@ impl HtkLookupIndex {
             backend,
             vocab_size: file.header().vocab_size,
         })
+    }
+
+    #[cfg(feature = "opt-prebuilt-built-state")]
+    pub(crate) fn build_from_table_image(
+        file: &ValidatedFile<'_>,
+        specials: &BTreeSet<u32>,
+        byte_fallback: &BTreeSet<u32>,
+        image: &[u8],
+    ) -> Result<Self, HtkIndexError> {
+        if file.header().hash_scheme != HashScheme::None {
+            return Err(HtkIndexError::UnsupportedTableImageScheme);
+        }
+        let offsets = build_offsets(file)?;
+        let keys = file
+            .tokens()
+            .filter(|(id, bytes)| {
+                !bytes.is_empty() && !specials.contains(id) && !byte_fallback.contains(id)
+            })
+            .map(|(id, bytes)| TableKey { id, bytes })
+            .collect::<Vec<_>>();
+        let table = FingerprintTable::from_bytes(image, file.header().vocab_size)?;
+        if table.key_count() != keys.len() as u32 {
+            return Err(HtkIndexError::TableImage(
+                TableImageError::KeyCountMismatch {
+                    expected: keys.len() as u32,
+                    actual: table.key_count(),
+                },
+            ));
+        }
+        crate::cold_construction::measure("lookup-image-semantic-checks", || {
+            for key in &keys {
+                if table.lookup(key.bytes, |id, _| id == key.id) != Some(key.id) {
+                    return Err(HtkIndexError::TableMissingKey(key.id));
+                }
+            }
+            Ok::<_, HtkIndexError>(())
+        })?;
+        let arena = htk_arena(
+            file.section(SectionId::Arena.value())
+                .expect("validated file has ARENA")
+                .to_vec(),
+        );
+        Ok(Self {
+            arena,
+            block_shift: offsets.block_shift,
+            bases: offsets.bases,
+            intra: offsets.intra,
+            backend: LookupBackend::Table(table),
+            vocab_size: file.header().vocab_size,
+        })
+    }
+
+    #[cfg(feature = "opt-prebuilt-built-state")]
+    pub(crate) fn table_image_bytes(&self) -> Option<Vec<u8>> {
+        match &self.backend {
+            LookupBackend::Table(table) => Some(table.to_bytes()),
+            LookupBackend::Perfect(_) => None,
+        }
     }
 
     pub fn lookup(&self, bytes: &[u8]) -> Option<u32> {

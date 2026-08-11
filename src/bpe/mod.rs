@@ -251,6 +251,98 @@ impl PairRankTable {
         Ok(table)
     }
 
+    #[cfg(feature = "opt-prebuilt-built-state")]
+    pub(crate) fn from_prebuilt_slots(
+        slot_count: usize,
+        entries: &[(u32, u64)],
+        byte_remapping: Option<&ByteRemapping>,
+        vocab_len: usize,
+    ) -> Result<Self, &'static str> {
+        #[cfg(feature = "opt-compact-ranks")]
+        {
+            let _ = (slot_count, entries, byte_remapping, vocab_len);
+            return Err("prebuilt pair slots require flat pair ranks");
+        }
+
+        #[cfg(not(feature = "opt-compact-ranks"))]
+        {
+            let mut table = crate::cold_construction::measure("pair-table-allocation", || {
+                Self::with_capacity(byte_remapping, vocab_len, entries.len())
+            })
+            .ok_or("prebuilt pair slots exceed table capacity")?;
+            if table.slots.len() != slot_count {
+                return Err("prebuilt pair slot count is not canonical");
+            }
+            let id_mask = (1_u64 << PAIR_ID_BITS) - 1;
+            crate::cold_construction::measure("pair-slot-import", || {
+                for &(slot, packed) in entries {
+                    let slot = slot as usize;
+                    let target = table
+                        .slots
+                        .get_mut(slot)
+                        .ok_or("prebuilt pair slot is out of bounds")?;
+                    if *target != u64::MAX || packed == u64::MAX {
+                        return Err("prebuilt pair slot is duplicated or empty");
+                    }
+                    let merged = (packed & id_mask) as u32;
+                    let key = packed >> PAIR_ID_BITS;
+                    let left = (key >> PAIR_ID_BITS) as u32;
+                    let right = (key & id_mask) as u32;
+                    if left as usize >= vocab_len
+                        || right as usize >= vocab_len
+                        || merged as usize >= vocab_len
+                    {
+                        return Err("prebuilt pair slot contains an invalid token id");
+                    }
+                    *target = packed;
+                    if (left | right) >> table.dense_log2 == 0 {
+                        table.dense[((left as usize) << table.dense_log2) | right as usize] =
+                            merged;
+                    }
+                }
+                Ok::<_, &'static str>(())
+            })?;
+            crate::cold_construction::measure("pair-slot-layout-validation", || {
+                for &(slot, packed) in entries {
+                    let key = packed >> PAIR_ID_BITS;
+                    let mut index =
+                        (key.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> table.shift) as usize;
+                    let mut displacement = 0usize;
+                    while index != slot as usize {
+                        if table.slots[index] == u64::MAX || displacement >= 64 {
+                            return Err("prebuilt pair slot is not reachable by linear probing");
+                        }
+                        index = (index + 1) & table.mask;
+                        displacement += 1;
+                    }
+                }
+                Ok::<_, &'static str>(())
+            })?;
+            Ok(table)
+        }
+    }
+
+    #[cfg(feature = "opt-prebuilt-built-state")]
+    pub(crate) fn prebuilt_slot_image(&self) -> Option<(usize, Vec<(u32, u64)>)> {
+        #[cfg(feature = "opt-compact-ranks")]
+        {
+            None
+        }
+        #[cfg(not(feature = "opt-compact-ranks"))]
+        {
+            Some((
+                self.slots.len(),
+                self.slots
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, packed)| {
+                        (*packed != u64::MAX).then_some((index as u32, *packed))
+                    })
+                    .collect(),
+            ))
+        }
+    }
+
     /// Build the two-level table, or `None` when this vocabulary cannot use
     /// it (IDs too large for the packed key, or pathological clustering in
     /// the flat table) , the caller then falls back to the hashbrown map.

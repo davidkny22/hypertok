@@ -8,6 +8,8 @@ use super::htk_reserved::{HtkReservedCatalog, HtkReservedDefinition, HtkReserved
 pub use super::htk_reserved::{HtkReservedEncoding, HtkReservedError};
 #[cfg(feature = "opt-prebuilt-pair-ranks")]
 use super::htk_worker::{HtkWorkerModel, PrebuiltPairEntries};
+#[cfg(feature = "opt-prebuilt-built-state")]
+use super::htk_worker::{PrebuiltBuiltState, PrebuiltPairSlots};
 #[cfg(feature = "opt-fused-pair-ranks")]
 use crate::bpe::PairRankTable;
 use crate::bpe::TokenBytes;
@@ -31,6 +33,16 @@ use std::sync::Arc;
 
 #[cfg(feature = "opt-prebuilt-pair-ranks")]
 pub const PREBUILT_PAIR_RANKS_SECTION_ID: u32 = 1025;
+
+#[cfg(feature = "opt-prebuilt-built-state")]
+pub const PREBUILT_BUILT_STATE_SECTION_ID: u32 = 1026;
+
+#[cfg(feature = "opt-prebuilt-pair-ranks")]
+enum PrebuiltPairData {
+    Entries(PrebuiltPairEntries),
+    #[cfg(feature = "opt-prebuilt-built-state")]
+    Slots(PrebuiltPairSlots),
+}
 
 #[cfg(test)]
 #[path = "htk_replay_tests.rs"]
@@ -238,13 +250,40 @@ pub fn load_htk_slice(bytes: &[u8]) -> Result<LoadedHtk, HtkLoadError> {
             ))
         })?;
     #[cfg(feature = "opt-prebuilt-pair-ranks")]
-    let prebuilt_pair_ranks = file
+    let mut prebuilt_pair_ranks = file
         .section(PREBUILT_PAIR_RANKS_SECTION_ID)
         .map(|section| {
             PrebuiltPairEntries::from_bytes(section, file.header().vocab_size)
                 .map_err(|_| HtkLoadError::InvalidModel("invalid prebuilt pair-rank image"))
         })
-        .transpose()?;
+        .transpose()?
+        .map(PrebuiltPairData::Entries);
+    #[cfg(feature = "opt-prebuilt-built-state")]
+    let prebuilt_lookup_image = file
+        .section(PREBUILT_BUILT_STATE_SECTION_ID)
+        .map(|section| {
+            PrebuiltBuiltState::from_bytes(section, file.header().vocab_size)
+                .map_err(|_| HtkLoadError::InvalidModel("invalid prebuilt built-state image"))
+        })
+        .transpose()?
+        .map(|state| {
+            let (lookup_image, pair_slots) = state.into_parts();
+            prebuilt_pair_ranks = Some(PrebuiltPairData::Slots(pair_slots));
+            lookup_image
+        });
+    #[cfg(feature = "opt-prebuilt-built-state")]
+    let lookup_index = crate::cold_construction::measure("lookup-index", || {
+        match prebuilt_lookup_image.as_deref() {
+            Some(image) => HtkLookupIndex::build_from_table_image(
+                &file,
+                &special_ids,
+                &byte_fallback_ids,
+                image,
+            ),
+            None => HtkLookupIndex::build(&file, &special_ids, &byte_fallback_ids),
+        }
+    })?;
+    #[cfg(not(feature = "opt-prebuilt-built-state"))]
     let lookup_index = crate::cold_construction::measure("lookup-index", || {
         HtkLookupIndex::build(&file, &special_ids, &byte_fallback_ids)
     })?;
@@ -378,7 +417,7 @@ fn build_byte_bpe(
     vocab: ByteVocab,
     specials: &[Special],
     priorities: Option<&[u32]>,
-    #[cfg(feature = "opt-prebuilt-pair-ranks")] prebuilt_pair_ranks: Option<PrebuiltPairEntries>,
+    #[cfg(feature = "opt-prebuilt-pair-ranks")] prebuilt_pair_ranks: Option<PrebuiltPairData>,
 ) -> Result<Tokenizer, HtkLoadError> {
     let base = crate::cold_construction::measure("base-semantic-validation", || {
         let base = read_byte_base(file);
@@ -449,10 +488,22 @@ fn build_byte_bpe(
         {
             #[cfg(feature = "opt-prebuilt-pair-ranks")]
             let pair_ranks = match prebuilt_pair_ranks {
-                Some(prebuilt) => Some(crate::cold_construction::measure(
-                    "prebuilt-pair-validation",
-                    || {
+                Some(PrebuiltPairData::Entries(prebuilt)) => Some(
+                    crate::cold_construction::measure("prebuilt-pair-validation", || {
                         hydrate_prebuilt_pair_ranks(
+                            prebuilt,
+                            &vocab,
+                            &base,
+                            &special_ids,
+                            remapping.as_ref(),
+                        )
+                    })?,
+                ),
+                #[cfg(feature = "opt-prebuilt-built-state")]
+                Some(PrebuiltPairData::Slots(prebuilt)) => Some(crate::cold_construction::measure(
+                    "prebuilt-built-state-pairs",
+                    || {
+                        hydrate_prebuilt_pair_slots(
                             prebuilt,
                             &vocab,
                             &base,
@@ -571,6 +622,36 @@ pub fn build_prebuilt_pair_image(bytes: &[u8]) -> Result<Vec<u8>, HtkLoadError> 
         .map_err(|_| HtkLoadError::InvalidModel("could not serialize prebuilt pair ranks"))
 }
 
+#[cfg(feature = "opt-prebuilt-built-state")]
+pub fn build_prebuilt_built_state_image(bytes: &[u8]) -> Result<Vec<u8>, HtkLoadError> {
+    let loaded = load_htk_slice(bytes)?;
+    let lookup_image = loaded
+        .lookup_index
+        .table_image_bytes()
+        .ok_or(HtkLoadError::Unsupported(
+            "prebuilt built state requires hash scheme 0",
+        ))?;
+    let vocab_size = u32::try_from(loaded.tokenizer.vocab_size())
+        .map_err(|_| HtkLoadError::InvalidModel("vocabulary size exceeds u32"))?;
+    let (pair_slot_count, pair_entries) = match &loaded.tokenizer {
+        HtkTokenizer::ByteBpe(tokenizer) => {
+            tokenizer
+                .prebuilt_pair_slot_image()
+                .ok_or(HtkLoadError::Unsupported(
+                    "prebuilt built state requires flat pair ranks",
+                ))?
+        }
+        #[cfg(any(feature = "sentencepiece", feature = "sentencepiece-core"))]
+        HtkTokenizer::SentencePiece(_) => {
+            return Err(HtkLoadError::Unsupported(
+                "prebuilt built state requires byte BPE",
+            ));
+        }
+    };
+    PrebuiltBuiltState::to_bytes(vocab_size, &lookup_image, pair_slot_count, &pair_entries)
+        .map_err(|_| HtkLoadError::InvalidModel("could not serialize prebuilt built state"))
+}
+
 #[cfg(feature = "opt-prebuilt-pair-ranks")]
 fn hydrate_prebuilt_pair_ranks<T: AsRef<[u8]>>(
     prebuilt: PrebuiltPairEntries,
@@ -582,6 +663,31 @@ fn hydrate_prebuilt_pair_ranks<T: AsRef<[u8]>>(
     let entries = prebuilt.into_entries();
     let pair_ranks = PairRankTable::from_packed_entries(&entries, byte_remapping, vocab.len())
         .map_err(HtkLoadError::InvalidModel)?;
+    validate_prebuilt_pair_ranks(pair_ranks, vocab, base, special_ids)
+}
+
+#[cfg(feature = "opt-prebuilt-built-state")]
+fn hydrate_prebuilt_pair_slots<T: AsRef<[u8]>>(
+    prebuilt: PrebuiltPairSlots,
+    vocab: &[T],
+    base: &[u32; 256],
+    special_ids: &BTreeSet<u32>,
+    byte_remapping: Option<&ByteRemapping>,
+) -> Result<PairRankTable, HtkLoadError> {
+    let (slot_count, entries) = prebuilt.into_parts();
+    let pair_ranks =
+        PairRankTable::from_prebuilt_slots(slot_count, &entries, byte_remapping, vocab.len())
+            .map_err(HtkLoadError::InvalidModel)?;
+    validate_prebuilt_pair_ranks(pair_ranks, vocab, base, special_ids)
+}
+
+#[cfg(feature = "opt-prebuilt-pair-ranks")]
+fn validate_prebuilt_pair_ranks<T: AsRef<[u8]>>(
+    pair_ranks: PairRankTable,
+    vocab: &[T],
+    base: &[u32; 256],
+    special_ids: &BTreeSet<u32>,
+) -> Result<PairRankTable, HtkLoadError> {
     let (mut products, base_ids) =
         crate::cold_construction::measure("pair-semantic-state-allocation", || {
             let products = vec![false; vocab.len()];
