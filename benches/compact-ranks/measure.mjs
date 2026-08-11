@@ -57,8 +57,16 @@ const pairedSummary = (baseline, candidate, field) => {
   };
 };
 const signedSummary = (values) => {
-  const summary = summarize(values);
-  return { ...summary, minimum: Math.min(...values), maximum: Math.max(...values) };
+  const minimum = Math.min(...values);
+  const offset = minimum < 0 ? -minimum : 0;
+  const summary = summarize(values.map((value) => value + offset));
+  return {
+    ...summary,
+    median: summary.median - offset,
+    p95: summary.p95 - offset,
+    minimum,
+    maximum: Math.max(...values),
+  };
 };
 
 const rows = [];

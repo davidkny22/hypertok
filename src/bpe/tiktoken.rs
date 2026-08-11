@@ -2,6 +2,8 @@
 use crate::bpe::bpe_merge_symbols_short_neon;
 #[cfg(feature = "opt-miss-path-diet")]
 use crate::bpe::long_pretoken_cache::LongPretokenCache;
+#[cfg(feature = "opt-force-split-bigram")]
+use crate::bpe::force_split_bigrams::ForceSplitBigrams;
 use crate::bpe::pretoken_cache::ShortPretokenCache;
 use crate::bpe::source_map::{MappedBytes, SourceMapError};
 use crate::bpe::{
@@ -45,6 +47,8 @@ pub struct Tokenizer {
     /// merge loop; `None` for vocabularies whose IDs don't fit its packed
     /// keys (those keep probing `merges`).
     pair_ranks: Option<Arc<PairRankTable>>,
+    #[cfg(feature = "opt-force-split-bigram")]
+    force_split_bigrams: Arc<ForceSplitBigrams>,
     /// Explicit merge priorities for rank-mapped vocabularies (fairseq
     /// heritage: RoBERTa/OPT/DeBERTa, whose vocab IDs are frequency-ordered
     /// and carry no rank information). When set, `merges` is empty,
@@ -77,6 +81,8 @@ pub struct Tokenizer {
     /// performs no per-pretoken allocations.
     merge_scratch: MergeScratch,
     symbol_scratch: Vec<TokenId>,
+    #[cfg(feature = "opt-force-split-bigram")]
+    force_split_scratch: Vec<TokenId>,
     /// Pretokenization scheme used by [`Self::encode_with_added_tokens`].
     pub(crate) pretokenizer_type: PretokenizerType,
     /// Added tokens (special and non-special), matched atomically in the raw
@@ -398,6 +404,8 @@ impl Tokenizer {
         Tokenizer {
             merges: Arc::new(HashMap::with_hasher(rustc_hash::FxBuildHasher {})),
             pair_ranks: Some(Arc::new(pair_ranks)),
+            #[cfg(feature = "opt-force-split-bigram")]
+            force_split_bigrams: Arc::new(ForceSplitBigrams::from_vocabulary(&vocab)),
             ranked_merges: None,
             vocab_inv: Arc::new(vocab_inv),
             vocab: Arc::new(vocab),
@@ -416,6 +424,8 @@ impl Tokenizer {
             },
             merge_scratch: MergeScratch::default(),
             symbol_scratch: Vec::new(),
+            #[cfg(feature = "opt-force-split-bigram")]
+            force_split_scratch: Vec::new(),
             pretokenizer_type: PretokenizerType::GPT2,
             added_tokens: Vec::new(),
             added_matcher: None,
@@ -504,6 +514,8 @@ impl Tokenizer {
         Tokenizer {
             merges: Arc::new(merges),
             pair_ranks,
+            #[cfg(feature = "opt-force-split-bigram")]
+            force_split_bigrams: Arc::new(ForceSplitBigrams::from_vocabulary(&vocab)),
             ranked_merges,
             vocab_inv: Arc::new(vocab_inv),
             vocab: Arc::new(vocab),
@@ -522,6 +534,8 @@ impl Tokenizer {
             },
             merge_scratch: MergeScratch::default(),
             symbol_scratch: Vec::new(),
+            #[cfg(feature = "opt-force-split-bigram")]
+            force_split_scratch: Vec::new(),
             pretokenizer_type: PretokenizerType::GPT2,
             added_tokens: Vec::new(),
             added_matcher: None,
@@ -883,6 +897,8 @@ impl Tokenizer {
         Tokenizer {
             merges: Arc::clone(&self.merges),
             pair_ranks: self.pair_ranks.clone(),
+            #[cfg(feature = "opt-force-split-bigram")]
+            force_split_bigrams: Arc::clone(&self.force_split_bigrams),
             ranked_merges: self.ranked_merges.clone(),
             vocab: Arc::clone(&self.vocab),
             vocab_inv: Arc::clone(&self.vocab_inv),
@@ -901,6 +917,8 @@ impl Tokenizer {
             },
             merge_scratch: MergeScratch::default(),
             symbol_scratch: Vec::new(),
+            #[cfg(feature = "opt-force-split-bigram")]
+            force_split_scratch: Vec::new(),
             pretokenizer_type: self.pretokenizer_type,
             added_tokens: self.added_tokens.clone(),
             added_matcher: self.added_matcher.clone(),
@@ -2237,6 +2255,71 @@ impl Tokenizer {
         }
     }
 
+    #[cfg(feature = "opt-force-split-bigram")]
+    fn encode_force_split_miss(
+        &mut self,
+        bytes: &[u8],
+        key: u128,
+        h: u64,
+        slot: usize,
+        out: &mut Vec<u32>,
+    ) -> bool {
+        let splitter = Arc::clone(&self.force_split_bigrams);
+        if splitter.boundaries(bytes).next().is_none() {
+            return false;
+        }
+
+        self.force_split_scratch.clear();
+        let mut start = 0;
+        for end in splitter
+            .boundaries(bytes)
+            .chain(std::iter::once(bytes.len()))
+        {
+            let segment = &bytes[start..end];
+            self.symbol_scratch.clear();
+            match self.byte_remapping.as_ref() {
+                Some(remapping) => self
+                    .symbol_scratch
+                    .extend(segment.iter().map(|&byte| remapping.mapping[byte as usize])),
+                None => self
+                    .symbol_scratch
+                    .extend(segment.iter().map(|&byte| TokenId::from(byte as u32))),
+            }
+            match self.pair_ranks.as_deref() {
+                Some(table) => bpe_merge_symbols_by_rank(
+                    &|left, right| table.rank(left, right),
+                    &mut self.symbol_scratch,
+                    &mut self.merge_scratch,
+                ),
+                None => bpe_merge_symbols_with_scratch(
+                    &self.merges,
+                    &mut self.symbol_scratch,
+                    &mut self.merge_scratch,
+                ),
+            }
+            self.force_split_scratch
+                .extend_from_slice(&self.symbol_scratch);
+            start = end;
+        }
+
+        let symbols = &self.force_split_scratch;
+        if key != 0 {
+            let (val, ext) = Self::pack_val(symbols, &mut self.token_arena);
+            self.pretoken_cache.insert_at(slot, key, h, val, ext);
+        } else {
+            let len = symbols.len() as u32;
+            let offset = self.token_arena.len() as u32;
+            self.token_arena.extend_from_slice(symbols);
+            #[cfg(not(feature = "opt-miss-path-diet"))]
+            self.pretoken_cache_long
+                .insert(bytes.into(), (offset, len));
+            #[cfg(feature = "opt-miss-path-diet")]
+            self.pretoken_cache_long.insert(bytes, (offset, len));
+        }
+        out.extend_from_slice(token_ids_as_u32s(symbols));
+        true
+    }
+
     /// Cache-miss path of the probe/emit loop: BPE-encode `bytes`, record
     /// it in the table `key` routes to (the short-pretoken table, or the
     /// long map when `key == 0`), and append its tokens to `out`. `slot`
@@ -2258,6 +2341,10 @@ impl Tokenizer {
         // build without ranked support.
         if self.ranked_merges.is_some() {
             return self.encode_pretoken_miss_ranked(bytes, key, h, slot, out);
+        }
+        #[cfg(feature = "opt-force-split-bigram")]
+        if !self.ignore_merges && self.encode_force_split_miss(bytes, key, h, slot, out) {
+            return;
         }
         if key != 0 {
             // Short pretoken (≤ 15 bytes, the overwhelming majority of
