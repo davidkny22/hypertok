@@ -563,7 +563,13 @@ export async function createTierRuntime(options) {
     }
   };
 
-  if (!optimizationConfiguration.lazyWorkerImage) ensureWorkerImage();
+  if (!optimizationConfiguration.lazyWorkerImage) {
+    try {
+      ensureWorkerImage();
+    } catch {
+      // Initial tier activation owns fallback or explicit-tier refusal for this recorded error.
+    }
+  }
 
   const ensureOpen = () => {
     if (closed) throw new Error("execution-tier session is closed");

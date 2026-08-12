@@ -18,6 +18,9 @@ const vocabulary = new Uint8Array(
 const gpt2Vocabulary = new Uint8Array(
   await readFile(path.join(root, "hypertok-vocab", "gpt2", "vocab.htk")),
 );
+const qwenVocabulary = new Uint8Array(
+  await readFile(path.join(root, "hypertok-vocab", "qwen3-6", "vocab.htk")),
+);
 const created = [];
 let delayedOperations = new Set();
 
@@ -123,6 +126,26 @@ test("worker image serialization waits for a worker tier", async () => {
   } finally {
     resident.free();
   }
+});
+
+test("automatic tier falls back when the vocabulary cannot export a worker image", async () => {
+  created.length = 0;
+  delayedOperations = new Set();
+  setIsolation(true);
+  const tokenizer = await fromBytes(qwenVocabulary, { tier: "auto", workers: 1 });
+  try {
+    assert.equal(tokenizer.tier, "single");
+    assert.equal(created.length, 0);
+    const text = "worker image fallback";
+    const ids = await tokenizer.encode(text);
+    assert.equal(tokenizer.decode(ids), text);
+  } finally {
+    tokenizer.free();
+  }
+  await assert.rejects(
+    () => fromBytes(qwenVocabulary, { tier: "shared", workers: 1 }),
+    /compatible \.htk source/,
+  );
 });
 
 test("worker-fault-falls-back-to-single", async () => {
