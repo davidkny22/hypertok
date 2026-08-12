@@ -386,6 +386,7 @@ export function createDecodeTable(core, options = {}) {
   let byteTableCalls = 0;
   let mixedDensityFallbackCalls = 0;
   let mixedRunFallbackCalls = 0;
+  let cleanJoinPasses = 0;
   const byteTable = useByteTable || useMixedRuns
     ? createTokenByteDecoder(core, size, now, useByteTable)
     : null;
@@ -472,6 +473,7 @@ export function createDecodeTable(core, options = {}) {
   }
 
   function joinKnownClean(ids) {
+    cleanJoinPasses += 1;
     const packed = table;
     let output = "";
     let index = 0;
@@ -480,22 +482,22 @@ export function createDecodeTable(core, options = {}) {
         const unrolledLength = ids.length - (ids.length % 4);
         for (; index < unrolledLength; index += 4) {
           let value = packed[ids[index]];
-          if (typeof value !== "string") return index;
+          if (typeof value !== "string") return { firstMiss: index, prefix: output };
           output += value;
           value = packed[ids[index + 1]];
-          if (typeof value !== "string") return index + 1;
+          if (typeof value !== "string") return { firstMiss: index + 1, prefix: output };
           output += value;
           value = packed[ids[index + 2]];
-          if (typeof value !== "string") return index + 2;
+          if (typeof value !== "string") return { firstMiss: index + 2, prefix: output };
           output += value;
           value = packed[ids[index + 3]];
-          if (typeof value !== "string") return index + 3;
+          if (typeof value !== "string") return { firstMiss: index + 3, prefix: output };
           output += value;
         }
       }
       for (; index < ids.length; index += 1) {
         const value = packed[ids[index]];
-        if (typeof value !== "string") return index;
+        if (typeof value !== "string") return { firstMiss: index, prefix: output };
         output += value;
       }
     } else {
@@ -503,51 +505,64 @@ export function createDecodeTable(core, options = {}) {
         const unrolledLength = ids.length - (ids.length % 4);
         for (; index < unrolledLength; index += 4) {
           let id = ids[index];
-          if (!validateTokenId(id)) return index;
+          if (!validateTokenId(id)) return { firstMiss: index, prefix: output };
           let value = packed[id];
-          if (typeof value !== "string") return index;
+          if (typeof value !== "string") return { firstMiss: index, prefix: output };
           output += value;
           id = ids[index + 1];
-          if (!validateTokenId(id)) return index + 1;
+          if (!validateTokenId(id)) return { firstMiss: index + 1, prefix: output };
           value = packed[id];
-          if (typeof value !== "string") return index + 1;
+          if (typeof value !== "string") return { firstMiss: index + 1, prefix: output };
           output += value;
           id = ids[index + 2];
-          if (!validateTokenId(id)) return index + 2;
+          if (!validateTokenId(id)) return { firstMiss: index + 2, prefix: output };
           value = packed[id];
-          if (typeof value !== "string") return index + 2;
+          if (typeof value !== "string") return { firstMiss: index + 2, prefix: output };
           output += value;
           id = ids[index + 3];
-          if (!validateTokenId(id)) return index + 3;
+          if (!validateTokenId(id)) return { firstMiss: index + 3, prefix: output };
           value = packed[id];
-          if (typeof value !== "string") return index + 3;
+          if (typeof value !== "string") return { firstMiss: index + 3, prefix: output };
           output += value;
         }
       }
       for (; index < ids.length; index += 1) {
         const id = ids[index];
-        if (!validateTokenId(id)) return index;
+        if (!validateTokenId(id)) return { firstMiss: index, prefix: output };
         const value = packed[id];
-        if (typeof value !== "string") return index;
+        if (typeof value !== "string") return { firstMiss: index, prefix: output };
         output += value;
       }
     }
     return output;
   }
 
-  function fusedTokenIds(input, firstMiss) {
-    if (input instanceof Uint32Array) return { ids: input, firstMiss: 0 };
+  function fusedTokenIds(input, attempt) {
+    if (input instanceof Uint32Array) {
+      return { ids: input, firstMiss: attempt.firstMiss, prefix: attempt.prefix };
+    }
     const ids = new Uint32Array(input.length);
-    let earliestMiss = firstMiss;
+    let earliestMiss = attempt.firstMiss;
+    let verifiedPrefix = "";
     for (let index = 0; index < input.length; index += 1) {
       const id = input[index];
       if (!validateTokenId(id)) {
         throw new TypeError("decode input must be a Uint32Array or an array of u32 values");
       }
       ids[index] = id;
-      if (index < earliestMiss && typeof table[id] !== "string") earliestMiss = index;
+      if (index < earliestMiss) {
+        const value = table[id];
+        if (typeof value !== "string") earliestMiss = index;
+        else verifiedPrefix += value;
+      }
     }
-    return { ids, firstMiss: earliestMiss };
+    return {
+      ids,
+      firstMiss: earliestMiss,
+      prefix: earliestMiss === attempt.firstMiss && verifiedPrefix === attempt.prefix
+        ? attempt.prefix
+        : verifiedPrefix,
+    };
   }
 
   function sampleDirty(ids) {
@@ -562,10 +577,10 @@ export function createDecodeTable(core, options = {}) {
     return { sampleCount, sampledDirty, unknown: false };
   }
 
-  function decodeCareful(input, firstMiss, sample = null) {
+  function decodeCareful(input, attempt, sample = null) {
     const prepared = useFusedValidation
-      ? fusedTokenIds(input, firstMiss)
-      : { ids: strictTokenIds(input), firstMiss: 0 };
+      ? fusedTokenIds(input, attempt)
+      : { ids: strictTokenIds(input), firstMiss: 0, prefix: "" };
     const { ids } = prepared;
     const sampled = sample ?? sampleDirty(ids);
     if (sampled.unknown) {
@@ -626,14 +641,18 @@ export function createDecodeTable(core, options = {}) {
       }
     }
     if (dirtyIds === 0) {
-      const output = joinKnownClean(ids);
-      if (typeof output !== "string") throw new Error("decode table restart did not converge");
+      let output = prepared.prefix;
+      for (let index = prepared.firstMiss; index < ids.length; index += 1) {
+        const value = table[ids[index]];
+        if (typeof value !== "string") throw new Error("decode table restart did not converge");
+        output += value;
+      }
       tableCalls += 1;
       return output;
     }
 
-    let output = "";
-    let index = 0;
+    let output = prepared.prefix;
+    let index = prepared.firstMiss;
     while (index < ids.length) {
       const value = table[ids[index]];
       if (typeof value === "string") {
@@ -744,6 +763,7 @@ export function createDecodeTable(core, options = {}) {
       fusedValidationEnabled: useFusedValidation,
       leanDispatchEnabled: useLeanDispatch,
       cleanUnrollEnabled: useCleanUnroll,
+      cleanJoinPasses,
       directScratchEnabled: useDirectScratch,
       directScratchCalls,
       directScratchState: directScratch?.stats() ?? null,

@@ -52,6 +52,12 @@ test("seeds the rank head and lazily materializes clean strings", () => {
   assert.equal(table.stats().tableCalls, 2);
 });
 
+test("continues a speculative clean join without rebuilding its prefix", () => {
+  const { table } = fixture([encoder.encode("a"), encoder.encode("bc")]);
+  assert.equal(table.decode(Uint32Array.of(0, 1, 0)), "abca");
+  assert.equal(table.stats().cleanJoinPasses, 1);
+});
+
 test("accepts an explicit frequency-ranked seed without duplicate ids", () => {
   const entries = [encoder.encode("a"), encoder.encode("b"), encoder.encode("c")];
   const { table } = fixture(entries, { seedEntries: 2, seedIds: Uint32Array.of(2, 1) });
