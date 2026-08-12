@@ -110,7 +110,7 @@ function routeFixture() {
   return {
     seen,
     adapter: Object.freeze({
-      encodeSync: () => [0],
+      encodeSync: () => Uint32Array.of(0),
       tokenBytes: () => Uint8Array.of(0x61),
       decode: (input) => {
         seen.push(input);
@@ -143,6 +143,7 @@ const repeated = measureDecodeRoutes({
 });
 assert.equal(repeated.containerRegime, "repeated");
 assert.equal(new Set(repeatedCandidate.seen).size, 1);
+assert.ok(repeatedCandidate.seen.every((input) => input instanceof Uint32Array));
 assert.equal(repeated.rows[0].all.pairedRatio.n, 3);
 assert.equal(
   repeated.rows[0].pairedCandidateToBaselineTimeRatio,
@@ -164,6 +165,7 @@ const fresh = measureDecodeRoutes({
 });
 assert.equal(fresh.containerRegime, "fresh");
 assert.equal(new Set(freshCandidate.seen).size, freshCandidate.seen.length);
+assert.ok(freshCandidate.seen.every((input) => input instanceof Uint32Array));
 assert.throws(
   () => measureDecodeRoutes({
     baseline: freshBaseline.adapter,

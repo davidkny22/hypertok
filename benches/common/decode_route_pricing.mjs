@@ -73,7 +73,7 @@ function elapsed(decode, segments, iterations, now, containerRegime) {
   const freshInputs = containerRegime === "fresh"
     ? Array.from(
         { length: iterations },
-        () => segments.map(({ ids }) => Array.from(ids)),
+        () => segments.map(({ ids }) => new Uint32Array(ids)),
       )
     : null;
   const started = now();
@@ -156,7 +156,7 @@ export function measureDecodeRoutes({
     const workloadBytes = workload.bytes ?? new TextEncoder().encode(workload.text).length;
     const iterations = Math.max(1, Math.ceil(targetBytesPerSample / workloadBytes));
     const segments = decodeFieldSegments(workload.text).map((text) => {
-      const ids = Array.from(baseline.encodeSync(text));
+      const ids = baseline.encodeSync(text);
       const dirty = ids.map((id) => tokenIsDirty(baseline.tokenBytes(id)));
       const shape = dirtyShape(dirty, mixedRunPenalty);
       const usesMixedRoute =
