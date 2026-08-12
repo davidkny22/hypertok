@@ -277,6 +277,19 @@ export class WasmSentencePieceTokenizer {
         return WasmSentencePieceTokenizer.__wrap(ret[0]);
     }
     /**
+     * @param {Uint8Array} data
+     * @returns {WasmSentencePieceTokenizer}
+     */
+    static fromResolverTrustedHtk(data) {
+        const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmsentencepiecetokenizer_fromResolverTrustedHtk(ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return WasmSentencePieceTokenizer.__wrap(ret[0]);
+    }
+    /**
      * @param {Uint8Array} input
      * @returns {string}
      */
@@ -599,6 +612,32 @@ export class WasmTokenizer {
         const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.wasmtokenizer_fromHtk(ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return WasmTokenizer.__wrap(ret[0]);
+    }
+    /**
+     * @param {Uint8Array} data
+     * @returns {WasmTokenizer}
+     */
+    static fromResolverTrustedHtk(data) {
+        const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmtokenizer_fromResolverTrustedHtk(ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return WasmTokenizer.__wrap(ret[0]);
+    }
+    /**
+     * @param {Uint8Array} data
+     * @returns {WasmTokenizer}
+     */
+    static fromResolverTrustedWarmHtk(data) {
+        const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmtokenizer_fromResolverTrustedWarmHtk(ptr0, len0);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }

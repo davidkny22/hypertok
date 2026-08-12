@@ -9,6 +9,7 @@ const singleOnlyShippingFeatures = new Set([
   "opt-decode-assembly",
   "opt-decode-borrowed-output",
   "opt-decode-utf16-output",
+  "opt-resolver-provenance",
 ]);
 const sharedShippingFeatures = shippingFeatures.filter(
   (feature) => !singleOnlyShippingFeatures.has(feature),

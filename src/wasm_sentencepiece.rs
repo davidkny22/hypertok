@@ -1,3 +1,5 @@
+#[cfg(feature = "opt-resolver-provenance")]
+use crate::load_tokenizer::htk::load_resolver_trusted_htk_slice;
 use crate::load_tokenizer::htk::{HtkTokenizer, LoadedHtk, load_htk_slice};
 use wasm_bindgen::prelude::*;
 
@@ -20,6 +22,18 @@ impl WasmSentencePieceTokenizer {
     #[wasm_bindgen(js_name = fromHtk)]
     pub fn from_htk(data: &[u8]) -> Result<WasmSentencePieceTokenizer, JsError> {
         let loaded = load_htk_slice(data).map_err(js_error)?;
+        if !matches!(&loaded.tokenizer, HtkTokenizer::SentencePiece(_)) {
+            return Err(JsError::new(
+                "WasmSentencePieceTokenizer requires a sentencepiece .htk file",
+            ));
+        }
+        Ok(Self { loaded })
+    }
+
+    #[cfg(feature = "opt-resolver-provenance")]
+    #[wasm_bindgen(js_name = fromResolverTrustedHtk)]
+    pub fn from_resolver_trusted_htk(data: &[u8]) -> Result<WasmSentencePieceTokenizer, JsError> {
+        let loaded = load_resolver_trusted_htk_slice(data).map_err(js_error)?;
         if !matches!(&loaded.tokenizer, HtkTokenizer::SentencePiece(_)) {
             return Err(JsError::new(
                 "WasmSentencePieceTokenizer requires a sentencepiece .htk file",

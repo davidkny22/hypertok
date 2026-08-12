@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { fromBytes } from "../src/index.mjs";
+import { createResolvedVocabHandle } from "../src/resolver-provenance.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -42,6 +43,38 @@ test("root API loads HTK bytes and exposes the declared single-tier surface", as
 test("root API rejects invalid bytes and options", async () => {
   await assert.rejects(() => fromBytes("not bytes"), /Uint8Array or ArrayBuffer/);
   await assert.rejects(() => fromBytes(new Uint8Array(), null), /load options must be an object/);
+  await assert.rejects(
+    () => fromBytes(new Uint8Array(), { validate: "yes" }),
+    /validate must be a boolean/,
+  );
+  await assert.rejects(
+    () => fromBytes({ bytes: new Uint8Array() }),
+    /Uint8Array or ArrayBuffer/,
+  );
+});
+
+test("resolver-owned handles use trusted construction while bare bytes retain refusal", async () => {
+  const source = new Uint8Array(
+    await readFile(path.join(root, "hypertok-vocab", "gpt2", "vocab.htk")),
+  );
+  const corruptedDigest = new Uint8Array(source);
+  corruptedDigest[32] ^= 1;
+  const handle = createResolvedVocabHandle(corruptedDigest);
+  const tokenizer = await fromBytes(handle, { tier: "single" });
+  try {
+    const ids = await tokenizer.encode("resolver provenance");
+    assert.equal(tokenizer.decode(ids), "resolver provenance");
+  } finally {
+    tokenizer.free();
+  }
+  await assert.rejects(
+    () => fromBytes(handle, { tier: "single", validate: true }),
+    /digest does not match/,
+  );
+  await assert.rejects(
+    () => fromBytes(corruptedDigest, { tier: "single" }),
+    /digest does not match/,
+  );
 });
 
 test("root API exposes SentencePiece structure and prefix markers", async () => {
@@ -88,4 +121,15 @@ test("root API exposes SentencePiece structure and prefix markers", async () => 
     () => fromBytes(bytes, { tier: "single", workers: 0 }),
     /workers must be a positive integer/,
   );
+});
+
+test("resolver-owned SentencePiece handles use the trusted constructor", async () => {
+  const bytes = await readFile(path.join(root, "tests", "fixtures", "sentencepiece.htk"));
+  const tokenizer = await fromBytes(createResolvedVocabHandle(bytes), { tier: "single" });
+  try {
+    const ids = await tokenizer.encode("hello world");
+    assert.equal(tokenizer.decode(ids), "hello world");
+  } finally {
+    tokenizer.free();
+  }
 });

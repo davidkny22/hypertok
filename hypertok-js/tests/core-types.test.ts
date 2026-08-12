@@ -6,6 +6,7 @@ import {
   type Tokenizer,
 } from "hypertok";
 import { loadVocab, VOCAB_VERSIONS } from "hypertok/vocab-resolve";
+import type { ResolvedVocab } from "hypertok/vocab-resolve";
 
 declare const bytes: Uint8Array;
 const tier: Tier = "single";
@@ -15,6 +16,7 @@ const tokenizer: Tokenizer = await fromBytes(bytes, {
   workers: 1,
   moduleSource: bytes,
   optimizations: { decodeAssembly: "auto", decodeTable: "auto" },
+  validate: true,
 });
 const ids: Uint32Array = await tokenizer.encode("hello", { reserved: policy });
 const syncIds: Uint32Array = tokenizer.encodeSync("hello");
@@ -25,7 +27,9 @@ const token: Uint8Array = tokenizer.tokenBytes(ids[0]);
 const structuralClass: "byte_bpe" | "sentencepiece_bpe" = tokenizer.structuralClass;
 const prefixMarker: Uint32Array = tokenizer.prefixMarker;
 tokenizer.free();
-const installedVocab: Uint8Array = await loadVocab("o200k", { timeoutMs: 5_000 });
+const installedVocab: ResolvedVocab = await loadVocab("o200k", { timeoutMs: 5_000 });
+const installedTokenizer: Tokenizer = await fromBytes(installedVocab);
+const exposedVocabBytes: Uint8Array = installedVocab.bytes;
 const o200kVersion: string | undefined = VOCAB_VERSIONS.o200k;
 
 void syncIds;
@@ -35,4 +39,6 @@ void token;
 void structuralClass;
 void prefixMarker;
 void installedVocab;
+void installedTokenizer;
+void exposedVocabBytes;
 void o200kVersion;

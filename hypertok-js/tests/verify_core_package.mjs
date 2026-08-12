@@ -122,8 +122,16 @@ import { createLazyHuggingFaceShim } from "hypertok/huggingface-lazy";
 import { createVocabLoader, loadVocab, VocabIntegrityError } from "hypertok/vocab-resolve";
 
 const byteBytes = await readFile(process.argv[2]);
-assert.deepEqual(await loadVocab("o200k"), byteBytes);
+const installedVocab = await loadVocab("o200k");
+assert.equal(Object.isFrozen(installedVocab), true);
 const expectedVocabBytes = new Uint8Array(byteBytes);
+assert.deepEqual(installedVocab.bytes, expectedVocabBytes);
+const exposedVocabBytes = installedVocab.bytes;
+exposedVocabBytes[0] ^= 1;
+assert.deepEqual(installedVocab.bytes, expectedVocabBytes);
+const installedTokenizer = await fromBytes(installedVocab, { tier: "single" });
+assert.equal(installedTokenizer.decode(await installedTokenizer.encode("installed vocabulary")), "installed vocabulary");
+installedTokenizer.free();
 const fallback = createVocabLoader({
   readLocal: async () => { throw new Error("filesystem unavailable"); },
   fetch: async () => ({

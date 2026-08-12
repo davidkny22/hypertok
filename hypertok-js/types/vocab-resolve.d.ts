@@ -14,6 +14,13 @@ export interface VocabLoadOptions {
   timeoutMs?: number;
 }
 
+declare const resolverOwnedVocab: unique symbol;
+
+export interface ResolvedVocab {
+  readonly bytes: Uint8Array;
+  readonly [resolverOwnedVocab]: true;
+}
+
 export interface VocabLoaderDependencies {
   readLocal?: (packageName: string, file: string) => Promise<Uint8Array | ArrayBuffer>;
   fetch?: (
@@ -28,4 +35,4 @@ export type VocabLoader = (
 ) => Promise<Uint8Array>;
 
 export function createVocabLoader(dependencies?: VocabLoaderDependencies): VocabLoader;
-export const loadVocab: VocabLoader;
+export function loadVocab(name: string, options?: VocabLoadOptions): Promise<ResolvedVocab>;

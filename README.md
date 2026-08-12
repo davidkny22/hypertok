@@ -47,8 +47,8 @@ In Node, load the installed vocabulary package through `loadVocab`:
 import { fromBytes } from "hypertok";
 import { loadVocab } from "hypertok/vocab-resolve";
 
-const bytes = await loadVocab("o200k");
-const tokenizer = await fromBytes(bytes);
+const vocab = await loadVocab("o200k");
+const tokenizer = await fromBytes(vocab);
 
 const detailed = await tokenizer.encodeDetailed("hello world");
 console.log(detailed.ids);
@@ -74,9 +74,11 @@ console.log(tokenizer.decode(ids));
 tokenizer.free();
 ```
 
-`fromBytes` accepts a `Uint8Array` or `ArrayBuffer` from any source. It validates the complete HTK
-image (hypertok's vocabulary format) before constructing a tokenizer. Unknown format versions, structural classes, sections,
-flags, index schemes, or behavior are refused explicitly.
+`loadVocab` returns a sealed resolver-owned handle. `fromBytes` trusts that handle's package
+provenance and skips content validation. Pass `{ validate: true }` to force full validation. Its
+`bytes` property returns a copy. A `Uint8Array` or `ArrayBuffer` from any other source always takes
+the fully validated path. Unknown format versions, structural classes, sections, flags, index
+schemes, or behavior are refused explicitly.
 
 The release gate exercises this public path in Node, Chromium, Deno, Bun, Cloudflare Workers, and
 Vercel Edge.

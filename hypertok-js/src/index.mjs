@@ -2,6 +2,7 @@ import { createTierRuntime } from "./tier-runtime.mjs";
 import { createComposedDecoder } from "./decode-composed.mjs";
 import { resolveOptimizationConfig } from "./optimization-config.mjs";
 import { createPublicRuntime } from "./public-runtime.mjs";
+import { isResolvedVocabHandle, resolverOwnedBytes } from "./resolver-provenance.mjs";
 import * as singleWasmModule from "../wasm/single/hypertok_wasm_core.js";
 
 const moduleBaseUrl = typeof import.meta.url === "string" ? import.meta.url : undefined;
@@ -17,6 +18,16 @@ function vocabularyBytes(input) {
   if (input instanceof Uint8Array) return input;
   if (input instanceof ArrayBuffer) return new Uint8Array(input);
   throw new TypeError("fromBytes input must be a Uint8Array or ArrayBuffer");
+}
+
+function vocabularyInput(input, validate) {
+  if (isResolvedVocabHandle(input)) {
+    return Object.freeze({
+      bytes: resolverOwnedBytes(input),
+      resolverTrusted: validate !== true,
+    });
+  }
+  return Object.freeze({ bytes: vocabularyBytes(input), resolverTrusted: false });
 }
 
 async function defaultWasmSource(moduleUrl) {
@@ -71,7 +82,7 @@ function reservedPolicy(policy) {
   };
 }
 
-async function sentencePieceRuntime(bytes, options, moduleSource) {
+async function sentencePieceRuntime(bytes, options, moduleSource, resolverTrusted) {
   if (options.workers !== undefined && (!Number.isInteger(options.workers) || options.workers < 1)) {
     throw new TypeError("workers must be a positive integer");
   }
@@ -81,7 +92,13 @@ async function sentencePieceRuntime(bytes, options, moduleSource) {
   await singleWasmModule.default(
     moduleSource === undefined ? undefined : { module_or_path: moduleSource },
   );
-  const tokenizer = singleWasmModule.WasmSentencePieceTokenizer.fromHtk(bytes);
+  const constructor = resolverTrusted
+    ? singleWasmModule.WasmSentencePieceTokenizer.fromResolverTrustedHtk
+    : singleWasmModule.WasmSentencePieceTokenizer.fromHtk;
+  if (typeof constructor !== "function") {
+    throw new Error("the wasm module has no resolver-provenance sentencepiece constructor");
+  }
+  const tokenizer = constructor.call(singleWasmModule.WasmSentencePieceTokenizer, bytes);
   const decodeConfiguration = resolveOptimizationConfig(options.optimizations).decode;
   // SentencePiece decode must interpret its metaspace marker as text structure. The generic
   // byte-BPE assembly and table paths would emit that marker's bytes instead of exact spaces.
@@ -177,11 +194,14 @@ export async function fromBytes(input, options = {}) {
   if (options === null || typeof options !== "object" || Array.isArray(options)) {
     throw new TypeError("load options must be an object");
   }
-  const bytes = vocabularyBytes(input);
+  if (options.validate !== undefined && typeof options.validate !== "boolean") {
+    throw new TypeError("validate must be a boolean");
+  }
+  const { bytes, resolverTrusted } = vocabularyInput(input, options.validate);
   const unthreadedModuleSource = options.moduleSource
     ?? await defaultWasmSource(singleModuleUrl);
   const runtime = bytes.length > 10 && bytes[10] === 1
-    ? await sentencePieceRuntime(bytes, options, unthreadedModuleSource)
+    ? await sentencePieceRuntime(bytes, options, unthreadedModuleSource, resolverTrusted)
     : await createTierRuntime({
         unthreadedModule: singleWasmModule,
         unthreadedModuleUrl: singleModuleUrl?.href,
@@ -192,6 +212,7 @@ export async function fromBytes(input, options = {}) {
         tier: options.tier,
         workerCount: options.workers,
         optimizations: options.optimizations,
+        resolverTrusted,
       });
   return createPublicRuntime(runtime, bytes);
 }

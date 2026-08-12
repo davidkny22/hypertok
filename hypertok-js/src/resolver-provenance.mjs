@@ -1,18 +1,34 @@
-import { loadVocab } from "./vocab-resolve.mjs";
-
 const bytesByHandle = new WeakMap();
 
-export function createResolvedVocabLoader(resolve = loadVocab) {
+function vocabularyBytes(value) {
+  if (value instanceof Uint8Array) return value;
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  throw new TypeError("vocabulary resolver returned non-byte data");
+}
+
+export function createResolvedVocabHandle(value) {
+  const ownedBytes = new Uint8Array(vocabularyBytes(value));
+  const handle = Object.create(null);
+  Object.defineProperty(handle, "bytes", {
+    enumerable: true,
+    get() {
+      return new Uint8Array(resolverOwnedBytes(this));
+    },
+  });
+  bytesByHandle.set(handle, ownedBytes);
+  return Object.freeze(handle);
+}
+
+export function createResolvedVocabLoader(resolve) {
   if (typeof resolve !== "function") throw new TypeError("resolve must be a function");
   return async function loadResolvedVocab(name, options) {
     const resolved = await resolve(name, options);
-    if (!(resolved instanceof Uint8Array)) {
-      throw new TypeError("vocabulary resolver returned non-byte data");
-    }
-    const handle = Object.freeze(Object.create(null));
-    bytesByHandle.set(handle, resolved);
-    return handle;
+    return createResolvedVocabHandle(resolved);
   };
+}
+
+export function isResolvedVocabHandle(value) {
+  return typeof value === "object" && value !== null && bytesByHandle.has(value);
 }
 
 export function resolverOwnedBytes(handle) {
@@ -53,5 +69,3 @@ export function resolverOwnedWorkerImage(handle) {
   }
   throw new RangeError("resolver-owned vocabulary has no built-state section");
 }
-
-export const loadResolvedVocab = createResolvedVocabLoader();

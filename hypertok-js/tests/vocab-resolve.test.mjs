@@ -7,10 +7,24 @@ import {
   VocabIntegrityError,
   VOCAB_VERSIONS,
 } from "../src/vocab-resolve.mjs";
+import { createResolvedVocabHandle } from "../src/resolver-provenance.mjs";
 
 const p50kEdit = new Uint8Array(
   await readFile(new URL("../../hypertok-vocab/p50k/p50k-edit.htk", import.meta.url)),
 );
+
+test("resolver-owned handles retain private bytes and expose copies", () => {
+  const source = Uint8Array.of(1, 2, 3);
+  const handle = createResolvedVocabHandle(source);
+  source[0] = 9;
+  assert.equal(Object.getPrototypeOf(handle), null);
+  assert.equal(Object.isFrozen(handle), true);
+  assert.deepEqual(handle.bytes, Uint8Array.of(1, 2, 3));
+  const exposed = handle.bytes;
+  exposed[1] = 9;
+  assert.deepEqual(handle.bytes, Uint8Array.of(1, 2, 3));
+  assert.notEqual(handle.bytes, handle.bytes);
+});
 
 test("reads an installed vocabulary without fetching", async () => {
   const calls = [];

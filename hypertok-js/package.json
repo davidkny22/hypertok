@@ -23,6 +23,7 @@
     "src/index.mjs",
     "src/optimization-config.mjs",
     "src/public-runtime.mjs",
+    "src/resolver-provenance.mjs",
     "src/shared-controller.mjs",
     "src/shim-runtime.mjs",
     "src/tier-runtime.mjs",

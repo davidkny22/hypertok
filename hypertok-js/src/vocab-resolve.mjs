@@ -1,4 +1,5 @@
 import { verifyVocabBytes, VocabIntegrityError } from "./vocab-integrity.mjs";
+import { createResolvedVocabHandle } from "./resolver-provenance.mjs";
 
 const DEFAULT_TIMEOUT_MS = 5_000;
 
@@ -118,4 +119,8 @@ export function createVocabLoader({
   };
 }
 
-export const loadVocab = createVocabLoader();
+const loadVocabBytes = createVocabLoader();
+
+export async function loadVocab(name, options) {
+  return createResolvedVocabHandle(await loadVocabBytes(name, options));
+}

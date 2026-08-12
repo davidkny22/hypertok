@@ -36,6 +36,7 @@ $shippingSingleOptimizations = @($shippingOptimizations) + @(
     "opt-decode-assembly"
     "opt-decode-borrowed-output"
     "opt-decode-utf16-output"
+    "opt-resolver-provenance"
 )
 $shippingSingleFeatures = (@(
     "portable-json"

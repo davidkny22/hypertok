@@ -1,3 +1,5 @@
+import type { ResolvedVocab } from "./vocab-resolve.js";
+
 export type Tier = "single" | "worker" | "shared";
 export type OptimizationState = "auto" | "off";
 export type CandidateOptimizationState = OptimizationState | "on";
@@ -26,6 +28,7 @@ export interface LoadOptions {
   workers?: number;
   optimizations?: OptimizationOptions;
   moduleSource?: WebAssembly.Module | BufferSource;
+  validate?: boolean;
 }
 
 export interface ReservedPolicy {
@@ -64,6 +67,6 @@ export interface Tokenizer {
 }
 
 export function fromBytes(
-  bytes: Uint8Array | ArrayBuffer,
+  bytes: Uint8Array | ArrayBuffer | ResolvedVocab,
   options?: LoadOptions,
 ): Promise<Tokenizer>;

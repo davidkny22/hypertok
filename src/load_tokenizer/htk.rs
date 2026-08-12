@@ -400,6 +400,7 @@ fn load_htk_slice_inner(
                     vocab,
                     &specials,
                     priorities.as_deref(),
+                    resolver_trusted,
                 )?))
             }
             #[cfg(not(any(feature = "sentencepiece", feature = "sentencepiece-core")))]
@@ -1170,35 +1171,44 @@ fn build_sentencepiece(
     vocab: ByteVocab,
     specials: &[Special],
     priorities: Option<&[u32]>,
+    resolver_trusted: bool,
 ) -> Result<SentencePieceBPE, HtkLoadError> {
     let base = read_sentencepiece_base(file);
-    for (&codepoint, &id) in &base {
-        let character = char::from_u32(codepoint).ok_or(HtkLoadError::InvalidModel(
-            "BASE contains a non-scalar codepoint",
-        ))?;
-        let mut encoded = [0_u8; 4];
-        if &vocab[id as usize][..] != character.encode_utf8(&mut encoded).as_bytes() {
-            return Err(HtkLoadError::InvalidModel(
-                "BASE id does not denote its codepoint",
-            ));
+    if !resolver_trusted {
+        for (&codepoint, &id) in &base {
+            let character = char::from_u32(codepoint).ok_or(HtkLoadError::InvalidModel(
+                "BASE contains a non-scalar codepoint",
+            ))?;
+            let mut encoded = [0_u8; 4];
+            if &vocab[id as usize][..] != character.encode_utf8(&mut encoded).as_bytes() {
+                return Err(HtkLoadError::InvalidModel(
+                    "BASE id does not denote its codepoint",
+                ));
+            }
         }
     }
     let byte_fallback_ids = read_byte_fallback(file);
-    for (byte, &id) in byte_fallback_ids.iter().enumerate() {
-        if vocab[id as usize].as_ref() != [byte as u8] {
-            return Err(HtkLoadError::InvalidModel(
-                "BYTEFALL id does not denote its indexed byte",
-            ));
+    if !resolver_trusted {
+        for (byte, &id) in byte_fallback_ids.iter().enumerate() {
+            if vocab[id as usize].as_ref() != [byte as u8] {
+                return Err(HtkLoadError::InvalidModel(
+                    "BYTEFALL id does not denote its indexed byte",
+                ));
+            }
         }
     }
     let byte_fallback: BTreeSet<u32> = byte_fallback_ids.iter().copied().collect();
     let special_ids: BTreeSet<u32> = specials.iter().map(|special| special.id).collect();
-    validate_key_set(&vocab, &special_ids, &byte_fallback)?;
-    if vocab.iter().enumerate().any(|(id, token)| {
-        !token.is_empty()
-            && !byte_fallback.contains(&(id as u32))
-            && std::str::from_utf8(token.as_ref()).is_err()
-    }) {
+    if !resolver_trusted {
+        validate_key_set(&vocab, &special_ids, &byte_fallback)?;
+    }
+    if !resolver_trusted
+        && vocab.iter().enumerate().any(|(id, token)| {
+            !token.is_empty()
+                && !byte_fallback.contains(&(id as u32))
+                && std::str::from_utf8(token.as_ref()).is_err()
+        })
+    {
         return Err(HtkLoadError::InvalidModel(
             "sentencepiece vocabulary contains non-UTF-8 token bytes",
         ));
@@ -1208,7 +1218,7 @@ fn build_sentencepiece(
     non_products.extend(byte_fallback.iter().copied());
     non_products.extend(base.values().copied());
     let exhaustive_splits = file.header().flags & BYTE_BPE_EXHAUSTIVE_SPLITS_FLAG != 0;
-    if exhaustive_splits && priorities.is_none() {
+    if !resolver_trusted && exhaustive_splits && priorities.is_none() {
         return Err(HtkLoadError::InvalidModel(
             "exhaustive split reconstruction requires PRIORITY",
         ));
@@ -1216,7 +1226,7 @@ fn build_sentencepiece(
     let default_priorities;
     let priorities = match priorities {
         Some(priorities) => {
-            if non_products.iter().any(|id| priorities[*id as usize] != 0) {
+            if !resolver_trusted && non_products.iter().any(|id| priorities[*id as usize] != 0) {
                 return Err(HtkLoadError::InvalidModel(
                     "initial or special token has merge priority",
                 ));
