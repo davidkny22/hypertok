@@ -7,7 +7,6 @@ const decoder = new TextDecoder();
 
 function coreFixture() {
   const entries = [encoder.encode("a"), encoder.encode("bc"), Uint8Array.of(0xe2), Uint8Array.of(0x82, 0xac)];
-  let resident = new Uint32Array(16);
   const gather = (ids) => {
     const parts = Array.from(ids, (id) => {
       const bytes = entries[id];
@@ -37,13 +36,6 @@ function coreFixture() {
       const text = decoder.decode(gather(ids));
       return Uint16Array.from({ length: text.length }, (_, index) => text.charCodeAt(index));
     },
-    residentDecodeIdsCapacity: () => resident.length,
-    residentDecodeIdsHighWater: () => resident.length,
-    residentDecodeIdsView: () => resident,
-    growResidentDecodeIds: () => {
-      resident = new Uint32Array(resident.length * 2);
-    },
-    decodeBoundaryBytes: (length) => gather(resident.subarray(0, length)),
   };
 }
 
@@ -60,24 +52,23 @@ const hotStringOptions = {
 };
 
 for (const configuration of [
-  { boundary: false, table: false, hotStrings: false },
-  { assembly: false, boundary: false, table: false, hotStrings: false },
-  { boundary: true, table: false, hotStrings: false },
-  { boundary: false, borrowedOutput: true, table: false, hotStrings: false },
-  { boundary: false, utf16Output: true, table: false, hotStrings: false },
-  { boundary: false, table: true, hotStrings: false },
-  { boundary: false, table: true, byteTable: true, hotStrings: false },
-  { boundary: false, table: true, mixedRuns: true, hotStrings: false },
-  { boundary: false, table: true, mixedRuns: true, runCache: true, hotStrings: false },
-  { boundary: false, table: true, mixedRuns: true, nativeLatin1: true, hotStrings: false },
-  { boundary: false, table: true, mixedRuns: true, portableLatin1: true, hotStrings: false },
-  { boundary: false, table: true, mixedRuns: true, fusedValidation: true, hotStrings: false },
-  { boundary: false, table: true, mixedRuns: true, fusedValidation: true, leanDispatch: true, hotStrings: false },
-  { boundary: false, table: true, mixedRuns: true, fusedValidation: true, cleanUnroll: true, hotStrings: false },
-  { boundary: false, table: true, mixedRuns: true, fusedValidation: true, directScratch: true, hotStrings: false },
-  { boundary: false, table: true, mixedRuns: true, fusedValidation: true, memo: true, hotStrings: false },
-  { boundary: false, table: false, hotStrings: true },
-  { boundary: true, table: true, hotStrings: true },
+  { table: false, hotStrings: false },
+  { assembly: false, table: false, hotStrings: false },
+  { borrowedOutput: true, table: false, hotStrings: false },
+  { utf16Output: true, table: false, hotStrings: false },
+  { table: true, hotStrings: false },
+  { table: true, byteTable: true, hotStrings: false },
+  { table: true, mixedRuns: true, hotStrings: false },
+  { table: true, mixedRuns: true, runCache: true, hotStrings: false },
+  { table: true, mixedRuns: true, nativeLatin1: true, hotStrings: false },
+  { table: true, mixedRuns: true, portableLatin1: true, hotStrings: false },
+  { table: true, mixedRuns: true, fusedValidation: true, hotStrings: false },
+  { table: true, mixedRuns: true, fusedValidation: true, leanDispatch: true, hotStrings: false },
+  { table: true, mixedRuns: true, fusedValidation: true, cleanUnroll: true, hotStrings: false },
+  { table: true, mixedRuns: true, fusedValidation: true, directScratch: true, hotStrings: false },
+  { table: true, mixedRuns: true, fusedValidation: true, memo: true, hotStrings: false },
+  { table: false, hotStrings: true },
+  { table: true, hotStrings: true },
 ]) {
   test(`composes exact decode ${JSON.stringify(configuration)}`, () => {
     const composed = createComposedDecoder(coreFixture(), {
@@ -88,7 +79,6 @@ for (const configuration of [
     assert.equal(composed.decode(Uint32Array.of(0, 1, 0)), "abca");
     assert.equal(composed.decode(Uint32Array.of(2, 3)), "€");
     assert.throws(() => composed.decode(Uint32Array.of(9)), /unknown token id/);
-    assert.equal(composed.stats().boundary, configuration.boundary);
     assert.equal(composed.stats().borrowedOutput, configuration.borrowedOutput === true);
     assert.equal(composed.stats().utf16Output, configuration.utf16Output === true);
     assert.equal(composed.stats().table, configuration.table);
@@ -129,10 +119,6 @@ for (const configuration of [
 test("validates the composed core and options", () => {
   assert.throws(() => createComposedDecoder({}), /provide decode, tokenBytes, and vocabSize/);
   assert.throws(() => createComposedDecoder(coreFixture(), []), /options must be an object/);
-  assert.throws(
-    () => createComposedDecoder(coreFixture(), { assembly: false, boundary: true }),
-    /boundary decode requires assembly/,
-  );
   assert.throws(
     () => createComposedDecoder(coreFixture(), { assembly: false, borrowedOutput: true }),
     /borrowed output decode requires assembly/,

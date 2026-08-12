@@ -17,7 +17,6 @@ const buildDefinitions = Object.freeze([
 const runtimeDefinitions = Object.freeze([
   Object.freeze(["lazyWorkerImage", true, "auto"]),
   Object.freeze(["decodeAssembly", true, "auto"]),
-  Object.freeze(["decodeBoundary", false, "auto"]),
   Object.freeze(["decodeBorrowedOutput", true, "auto"]),
   Object.freeze(["decodeUtf16Output", false, "off"]),
   Object.freeze(["decodeHotStrings", false, "auto"]),
@@ -121,7 +120,6 @@ export function resolveOptimizationConfig(value) {
     (states.decodeMixedRuns === "on" || admitted("decodeMixedRuns"));
   const decode = Object.freeze({
     assembly,
-    boundary: assembly && admitted("decodeBoundary"),
     borrowedOutput:
       assembly &&
       (states.decodeBorrowedOutput === "on" || admitted("decodeBorrowedOutput")),

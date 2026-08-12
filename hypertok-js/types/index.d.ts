@@ -6,7 +6,6 @@ export type CandidateOptimizationState = OptimizationState | "on";
 
 export interface OptimizationOptions {
   decodeAssembly?: OptimizationState;
-  decodeBoundary?: OptimizationState;
   decodeBorrowedOutput?: CandidateOptimizationState;
   decodeUtf16Output?: CandidateOptimizationState;
   decodeHotStrings?: OptimizationState;

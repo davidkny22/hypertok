@@ -482,7 +482,6 @@ export async function createTierRuntime(options) {
     optimizationConfiguration.decode.assembly && typeof single.decodeAssemblyBytes !== "function"
       ? Object.freeze({
           assembly: false,
-          boundary: false,
           borrowedOutput: false,
           utf16Output: false,
           hotStrings: false,

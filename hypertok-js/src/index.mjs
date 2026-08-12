@@ -105,7 +105,6 @@ async function sentencePieceRuntime(bytes, options, moduleSource, resolverTruste
   const decoder = createComposedDecoder(tokenizer, {
     ...decodeConfiguration,
     assembly: false,
-    boundary: false,
     borrowedOutput: false,
     utf16Output: false,
     hotStrings: false,

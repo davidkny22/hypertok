@@ -126,7 +126,6 @@
         "tests/module-source.test.mjs",
         "tests/vocab-resolve.test.mjs",
         "tests/decode-assembly.test.mjs",
-        "tests/decode-boundary.test.mjs",
         "tests/decode-composed.test.mjs",
         "tests/decode-hotstrings.test.mjs",
         "tests/decode-id-scratch.test.mjs",

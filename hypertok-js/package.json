@@ -8,7 +8,6 @@
   "files": [
     "src/decode-assembly.mjs",
     "src/decode-borrowed.mjs",
-    "src/decode-boundary.mjs",
     "src/decode-composed.mjs",
     "src/decode-hotstrings.mjs",
     "src/decode-id-scratch.mjs",

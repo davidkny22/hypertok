@@ -14,7 +14,6 @@ const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".
 const automatic = resolveOptimizationConfig();
 assert.deepEqual(automatic.decode, {
   assembly: true,
-  boundary: false,
   borrowedOutput: true,
   utf16Output: false,
   hotStrings: false,
@@ -83,7 +82,6 @@ for (const key of optimizationKeys) {
 const tableOff = resolveOptimizationConfig({ decodeTable: "off" });
 assert.deepEqual(tableOff.decode, {
   assembly: true,
-  boundary: false,
   borrowedOutput: true,
   utf16Output: false,
   hotStrings: false,
@@ -103,7 +101,6 @@ assert.deepEqual(tableOff.decode, {
 const assemblyOff = resolveOptimizationConfig({ decodeAssembly: "off" });
 assert.deepEqual(assemblyOff.decode, {
   assembly: false,
-  boundary: false,
   borrowedOutput: false,
   utf16Output: false,
   hotStrings: false,
