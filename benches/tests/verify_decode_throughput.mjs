@@ -199,8 +199,22 @@ assert.equal(subsetRow.candidateAssembly, null);
 assert.equal(subsetRow.candidateMillisecondsPerAssemblySegment, null);
 assert.equal(subsetRow.candidateMinusAssemblyMillisecondsPerSegment, null);
 
+const stitcherPricing = measureDecodeRoutes({
+  baseline: subsetRuntime,
+  candidate: subsetRuntime,
+  workloads: [{ id: "run-stitcher", text: "a".repeat(8_192) }],
+  candidateMode: "run-stitcher",
+  targetBytesPerSample: 1,
+  n: 1,
+  warmup: 0,
+  now: routeClock(),
+});
+assert.equal(stitcherPricing.rows[0].mixedSegments, 2);
+assert.equal(stitcherPricing.rows[0].candidateAssemblySegments, 0);
+
 console.log("decode throughput verifier PASS (exact output, statistics, ratios)");
 console.log("decoded-output mutation RED (1/1)");
 console.log("decode container regimes PASS (throughput and route pricing kept separate)");
 console.log("throughput-preserves-hypertok-typed-decode-input PASS");
 console.log("decode-route-pricing-uses-candidate-assembly-subset PASS");
+console.log("decode-route-pricing-routes-dirty-stitcher-segments-by-run PASS");

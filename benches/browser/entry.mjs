@@ -361,6 +361,8 @@ export async function runDecodeRoutePricing({
                             ? { decodeMemo: "off", decodeDirectScratch: "on", decodeBorrowedOutput: "on" }
           : candidateMode === "dirty-batch" || candidateMode === "dirty-batch-composed"
             ? { decodeMemo: "off", decodeDirtyRunBatch: "off" }
+            : candidateMode === "run-stitcher"
+              ? { decodeRunStitcher: "off" }
             : candidateMode === "string-builtins"
               ? { decodeMemo: "off", decodeStringBuiltins: "off" }
             : { decodeMixedRuns: "off" },
@@ -405,6 +407,8 @@ export async function runDecodeRoutePricing({
                                 ? { decodeMemo: "off", decodeDirectScratch: "on", decodeBorrowedOutput: "off" }
           : candidateMode === "dirty-batch" || candidateMode === "dirty-batch-composed"
             ? { decodeMemo: "off", decodeDirtyRunBatch: "on" }
+            : candidateMode === "run-stitcher"
+              ? { decodeRunStitcher: "on" }
             : candidateMode === "string-builtins"
               ? {
                   decodeMemo: "off",

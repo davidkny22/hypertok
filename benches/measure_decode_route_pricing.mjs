@@ -20,6 +20,12 @@ const vocabularyArgument = process.argv.find((argument) => argument.startsWith("
 const selectedVocabulary = vocabularyArgument?.slice("--vocabulary=".length) ?? null;
 const workloadArgument = process.argv.find((argument) => argument.startsWith("--workload="));
 const selectedWorkload = workloadArgument?.slice("--workload=".length) ?? null;
+const excludedWorkloadArgument = process.argv.find((argument) =>
+  argument.startsWith("--exclude-workload=")
+);
+const excludedWorkload = excludedWorkloadArgument?.slice("--exclude-workload=".length) ?? null;
+const regimeArgument = process.argv.find((argument) => argument.startsWith("--regime="));
+const selectedRegime = regimeArgument?.slice("--regime=".length) ?? null;
 const evidenceLabelArgument = process.argv.find((argument) => argument.startsWith("--evidence-label="));
 const evidenceLabel = evidenceLabelArgument?.slice("--evidence-label=".length) ?? null;
 const quiet = process.argv.includes("--quiet");
@@ -27,11 +33,14 @@ const skipBrowserTiming = process.argv.includes("--skip-browser-timing");
 if (!Number.isInteger(sampleCount) || sampleCount < 1 || sampleCount > 128) {
   throw new TypeError("n must be an integer from 1 through 128");
 }
-if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable", "direct-scratch", "clean-unroll", "borrowed-output", "utf16-output", "direct-borrowed", "cut-direct", "cut-borrowed", "dirty-batch", "dirty-batch-composed", "string-builtins"]).has(candidateMode)) {
+if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable", "direct-scratch", "clean-unroll", "borrowed-output", "utf16-output", "direct-borrowed", "cut-direct", "cut-borrowed", "dirty-batch", "dirty-batch-composed", "run-stitcher", "string-builtins"]).has(candidateMode)) {
   throw new TypeError("candidate is not supported by decode route pricing");
 }
 if (evidenceLabel !== null && !/^[a-z0-9-]+$/.test(evidenceLabel)) {
   throw new TypeError("evidence label must contain only lowercase letters, digits, and hyphens");
+}
+if (selectedRegime !== null && !new Set(["fresh", "repeated"]).has(selectedRegime)) {
+  throw new TypeError("regime must be fresh or repeated");
 }
 const baseOutputPath = path.join(
   repositoryDirectory,
@@ -41,6 +50,8 @@ const baseOutputPath = path.join(
     ? `dirty-batch${selectedVocabulary === null ? "" : `-${selectedVocabulary}`}-pricing-n${sampleCount}.json`
     : candidateMode === "dirty-batch-composed"
       ? `dirty-batch-composed${selectedVocabulary === null ? "" : `-${selectedVocabulary}`}-pricing-n${sampleCount}.json`
+    : candidateMode === "run-stitcher"
+      ? `run-stitcher${selectedVocabulary === null ? "" : `-${selectedVocabulary}`}${selectedWorkload === null ? "" : `-${selectedWorkload}`}${selectedRegime === null ? "" : `-${selectedRegime}`}-pricing-n${sampleCount}.json`
     : candidateMode === "string-builtins"
       ? `string-builtins${selectedVocabulary === null ? "" : `-${selectedVocabulary}`}${selectedWorkload === null ? "" : `-${selectedWorkload}`}-pricing-n${sampleCount}.json`
     : candidateMode === "mixed"
@@ -92,7 +103,8 @@ const decisionWorkloads = candidateMode === "dirty-batch" || candidateMode === "
     : null;
 const workloads = loadCorpus().filter(({ id }) =>
   (decisionWorkloads === null || decisionWorkloads.has(id)) &&
-  (selectedWorkload === null || id === selectedWorkload)
+  (selectedWorkload === null || id === selectedWorkload) &&
+  (excludedWorkload === null || id !== excludedWorkload)
 );
 if (workloads.length === 0) throw new TypeError(`unknown workload ${selectedWorkload}`);
 const workloadsFor = (artifact) => candidateMode !== "dirty-batch" && candidateMode !== "dirty-batch-composed"
@@ -100,12 +112,18 @@ const workloadsFor = (artifact) => candidateMode !== "dirty-batch" && candidateM
   : workloads.filter(({ id }) =>
       artifact.vocabulary === "gpt2" ? id === "long-document" : id === "chinese"
     );
-const regimes = candidateMode === "memo"
+const availableRegimes = candidateMode === "memo" || candidateMode === "run-stitcher"
   ? ["repeated", "fresh"]
   : candidateMode === "dirty-batch" || candidateMode === "dirty-batch-composed" || candidateMode === "string-builtins" || candidateMode === "direct-scratch" || candidateMode === "clean-unroll" || candidateMode === "latin1-native" || candidateMode === "borrowed-output" || candidateMode === "utf16-output" || compositionModes.has(candidateMode)
     ? ["fresh"]
     : ["repeated"];
-const targetBytesPerSample = candidateMode === "dirty-batch" || candidateMode === "dirty-batch-composed" || candidateMode === "string-builtins" || candidateMode === "latin1-native" || candidateMode === "borrowed-output" || candidateMode === "utf16-output" || compositionModes.has(candidateMode)
+const regimes = selectedRegime === null
+  ? availableRegimes
+  : availableRegimes.filter((regime) => regime === selectedRegime);
+if (regimes.length === 0) {
+  throw new TypeError(`${candidateMode} does not support the ${selectedRegime} regime`);
+}
+const targetBytesPerSample = candidateMode === "dirty-batch" || candidateMode === "dirty-batch-composed" || candidateMode === "run-stitcher" || candidateMode === "string-builtins" || candidateMode === "latin1-native" || candidateMode === "borrowed-output" || candidateMode === "utf16-output" || compositionModes.has(candidateMode)
   ? 16_777_216
   : 1_048_576;
 
@@ -139,6 +157,8 @@ async function measureNode(containerRegime, artifact) {
                             ? { decodeMemo: "off", decodeDirectScratch: "on", decodeBorrowedOutput: "on" }
             : candidateMode === "dirty-batch" || candidateMode === "dirty-batch-composed"
               ? { decodeMemo: "off", decodeDirtyRunBatch: "off" }
+              : candidateMode === "run-stitcher"
+                ? { decodeRunStitcher: "off" }
               : candidateMode === "string-builtins"
                 ? { decodeMemo: "off", decodeStringBuiltins: "off" }
               : { decodeMixedRuns: "off" },
@@ -183,6 +203,8 @@ async function measureNode(containerRegime, artifact) {
                                 ? { decodeMemo: "off", decodeDirectScratch: "on", decodeBorrowedOutput: "off" }
               : candidateMode === "dirty-batch" || candidateMode === "dirty-batch-composed"
                 ? { decodeMemo: "off", decodeDirtyRunBatch: "on" }
+                : candidateMode === "run-stitcher"
+                  ? { decodeRunStitcher: "on" }
                 : candidateMode === "string-builtins"
                   ? {
                       decodeMemo: "off",
@@ -213,7 +235,7 @@ const nodeVocabularies = {};
 for (const artifact of artifacts) {
   const nodeRegimes = {};
   for (const regime of regimes) nodeRegimes[regime] = await measureNode(regime, artifact);
-  nodeVocabularies[artifact.vocabulary] = candidateMode === "memo"
+  nodeVocabularies[artifact.vocabulary] = candidateMode === "memo" || candidateMode === "run-stitcher"
     ? { regimes: nodeRegimes }
     : nodeRegimes[regimes[0]];
 }
@@ -269,7 +291,7 @@ try {
         },
       );
     }
-    chromeRegimes[artifact.vocabulary] = candidateMode === "memo"
+    chromeRegimes[artifact.vocabulary] = candidateMode === "memo" || candidateMode === "run-stitcher"
       ? { regimes: vocabularyRegimes }
       : vocabularyRegimes[regimes[0]];
   }

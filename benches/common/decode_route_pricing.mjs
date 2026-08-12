@@ -142,7 +142,7 @@ export function measureDecodeRoutes({
   warmup = 2,
   now = () => performance.now(),
 }) {
-  if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable", "direct-scratch", "clean-unroll", "borrowed-output", "utf16-output", "direct-borrowed", "cut-direct", "cut-borrowed", "dirty-batch", "dirty-batch-composed", "string-builtins"]).has(candidateMode)) {
+  if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable", "direct-scratch", "clean-unroll", "borrowed-output", "utf16-output", "direct-borrowed", "cut-direct", "cut-borrowed", "dirty-batch", "dirty-batch-composed", "run-stitcher", "string-builtins"]).has(candidateMode)) {
     throw new TypeError("candidateMode is not supported by decode route pricing");
   }
   if (!new Set(["repeated", "fresh"]).has(containerRegime)) {
@@ -165,9 +165,15 @@ export function measureDecodeRoutes({
         candidateMode === "latin1-native" ||
         candidateMode === "latin1-portable" ||
         candidateMode === "dirty-batch" ||
-        candidateMode === "dirty-batch-composed";
+        candidateMode === "dirty-batch-composed" ||
+        candidateMode === "run-stitcher";
       const candidateShape = usesMixedRoute
-        ? mixedRoute(dirty, maxMixedDirtyDensity, mixedRunPenalty)
+        ? candidateMode === "run-stitcher"
+          ? Object.freeze({
+              route: shape.dirtyIds === 0 ? "table" : "mixed",
+              ...shape,
+            })
+          : mixedRoute(dirty, maxMixedDirtyDensity, mixedRunPenalty)
         : null;
       if (baseline.decode(ids) !== text) throw new Error(`${workload.id}: baseline mismatch`);
       if (candidate.decode(ids) !== text) throw new Error(`${workload.id}: candidate mismatch`);
