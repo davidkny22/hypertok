@@ -8,9 +8,11 @@ const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 function fixture(entries, options = {}) {
   const fallbackInputs = [];
   const fallbackKinds = [];
+  const tokenByteCalls = new Uint32Array(entries.length);
   const tokenBytes = (id) => {
     const bytes = entries[id];
     if (!(bytes instanceof Uint8Array)) throw new RangeError(`unknown token id ${id}`);
+    tokenByteCalls[id] += 1;
     return bytes;
   };
   const decode = (ids) => {
@@ -34,7 +36,7 @@ function fixture(entries, options = {}) {
     { vocabSize: entries.length, tokenBytes, decode },
     { seedEntries: 1, maxTableBytes: 1024, maxDirtyDensity: 0.25, ...options },
   );
-  return { table, decode, fallbackInputs, fallbackKinds };
+  return { table, decode, fallbackInputs, fallbackKinds, tokenByteCalls };
 }
 
 test("seeds the rank head and lazily materializes clean strings", () => {
@@ -290,6 +292,22 @@ test("routes dirty-dense segments through the portable Latin-1 bulk path", () =>
   assert.deepEqual(fallbackInputs, []);
   assert.equal(table.stats().portableLatin1Enabled, true);
   assert.equal(table.stats().portableLatin1State.portableDecoderCalls, 1);
+});
+
+test("materializes dirty byte strings only for token ids actually touched", () => {
+  const entries = Array.from({ length: 1_000 }, () => encoder.encode("a"));
+  entries[1] = Uint8Array.of(0xe2);
+  entries[2] = Uint8Array.of(0x82, 0xac);
+  const { table, tokenByteCalls } = fixture(entries, {
+    seedEntries: 0,
+    mixedRuns: true,
+    maxMixedDirtyDensity: 1,
+    mixedRunPenalty: 0,
+  });
+  assert.equal(table.decode(Uint32Array.of(1, 2)), "€");
+  assert.deepEqual(Array.from(tokenByteCalls.slice(0, 4)), [0, 1, 1, 0]);
+  assert.equal(tokenByteCalls.reduce((sum, count) => sum + count, 0), 2);
+  assert.equal(table.stats().byteTableState.known, 2);
 });
 
 test("routes high-dirty arrays through one reusable validated ID scratch", () => {

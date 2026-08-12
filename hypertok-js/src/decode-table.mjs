@@ -188,6 +188,25 @@ function createTokenByteDecoder(core, size, now, wholeSegments) {
   let runDecoderCalls = 0;
   let runBytesCopied = 0;
 
+  function cacheDirtyBytes(id, bytes) {
+    if (dirtyStrings[id] === undefined) dirtyStrings[id] = bytes;
+  }
+
+  function materializeDirty(id, bytes) {
+    const current = dirtyStrings[id];
+    if (typeof current === "string") return current;
+    const source = current instanceof Uint8Array ? current : bytes;
+    const value = fromCodeUnits(source);
+    dirtyStrings[id] = value;
+    dirty += 1;
+    dirtyPayloadBytes += source.length;
+    if (!wholeSegments) {
+      known += 1;
+      initialized = true;
+    }
+    return value;
+  }
+
   function initialize() {
     if (initialized) return;
     const started = now();
@@ -206,9 +225,7 @@ function createTokenByteDecoder(core, size, now, wholeSegments) {
           total += bytes.length;
         }
         if (!isValidUtf8(bytes)) {
-          dirtyStrings[id] = fromCodeUnits(bytes);
-          dirty += 1;
-          dirtyPayloadBytes += bytes.length;
+          materializeDirty(id, bytes);
         }
         known += 1;
       } catch {
@@ -259,8 +276,21 @@ function createTokenByteDecoder(core, size, now, wholeSegments) {
   }
 
   function byteString(id) {
-    initialize();
-    return dirtyStrings[id];
+    if (wholeSegments) {
+      initialize();
+      return dirtyStrings[id];
+    }
+    const current = dirtyStrings[id];
+    if (typeof current === "string") return current;
+    if (current instanceof Uint8Array) return materializeDirty(id, current);
+    const bytes = core.tokenBytes(id);
+    if (!(bytes instanceof Uint8Array)) {
+      throw new TypeError("tokenBytes must return a Uint8Array");
+    }
+    initialized = true;
+    if (!isValidUtf8(bytes)) return materializeDirty(id, bytes);
+    known += 1;
+    return undefined;
   }
 
   function decodeByteString(value) {
@@ -291,7 +321,7 @@ function createTokenByteDecoder(core, size, now, wholeSegments) {
     });
   }
 
-  return Object.freeze({ decode, byteString, decodeByteString, stats });
+  return Object.freeze({ decode, byteString, decodeByteString, cacheDirtyBytes, stats });
 }
 
 export function createDecodeTable(core, options = {}) {
@@ -421,6 +451,7 @@ export function createDecodeTable(core, options = {}) {
     if (status[id] === 2) {
       table[id] = DIRTY;
       dirtyKnown += 1;
+      byteTable?.cacheDirtyBytes(id, bytes);
     }
     return status[id];
   }
