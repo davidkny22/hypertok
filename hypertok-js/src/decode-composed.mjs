@@ -4,6 +4,7 @@ import { createHotStringDecoder } from "./decode-hotstrings.mjs";
 import { createDecodeMemo } from "./decode-memo.mjs";
 import { createDecodeTable } from "./decode-table.mjs";
 import { createUtf16AssemblyDecoder } from "./decode-utf16.mjs";
+import { createStringBuiltinsDecoder } from "./decode-string-builtins.mjs";
 
 function requiredCore(core) {
   if (
@@ -63,6 +64,7 @@ export function createComposedDecoder(core, options = {}) {
   const useDirectScratch = options.directScratch === true;
   const useMemo = options.memo === true;
   const useDirtyRunBatch = options.dirtyRunBatch === true;
+  const useStringBuiltins = options.stringBuiltins === true;
   const useHotStrings = options.hotStrings === true;
   if (useBorrowedOutput && !useAssembly) {
     throw new TypeError("borrowed output decode requires assembly decode");
@@ -82,6 +84,9 @@ export function createComposedDecoder(core, options = {}) {
   if (useRunCache && !useMixedRuns) {
     throw new TypeError("maximal-run cache requires mixed-run decode");
   }
+  if (useStringBuiltins && (useBorrowedOutput || useUtf16Output)) {
+    throw new TypeError("string builtins require the dedicated assembly endpoint");
+  }
   if (useDirtyRunBatch && !useMixedRuns) {
     throw new TypeError("dirty-run batching requires mixed-run decode");
   }
@@ -96,7 +101,9 @@ export function createComposedDecoder(core, options = {}) {
     stats: () => Object.freeze({ decoderCalls: 0 }),
   });
   const assembly = useAssembly
-    ? useUtf16Output
+    ? useStringBuiltins
+      ? createStringBuiltinsDecoder(core)
+      : useUtf16Output
       ? createUtf16AssemblyDecoder(core)
       : useBorrowedOutput
       ? createBorrowedAssemblyDecoder(core)
@@ -157,6 +164,7 @@ export function createComposedDecoder(core, options = {}) {
       directScratch: useDirectScratch,
       memo: useMemo,
       dirtyRunBatch: useDirtyRunBatch,
+      stringBuiltins: useStringBuiltins,
       hotStrings: useHotStrings,
       assembly: assembly.stats(),
       tableState: table?.stats() ?? null,

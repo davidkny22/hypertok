@@ -1,5 +1,6 @@
 import { resolveOptimizationConfig } from "./optimization-config.mjs";
 import { createComposedDecoder } from "./decode-composed.mjs";
+import { registerStringBuiltinsContext } from "./decode-string-builtins.mjs";
 import { registerShimRuntime } from "./shim-runtime.mjs";
 
 const textEncoder = new TextEncoder();
@@ -251,26 +252,30 @@ async function loadSingle(
 ) {
   const module = bundledModule
     ?? await import(/* webpackIgnore: true */ /* @vite-ignore */ moduleUrl);
-  await module.default(
+  const wasm = await module.default(
     moduleSource === undefined ? undefined : { module_or_path: moduleSource },
   );
+  const register = (tokenizer) => {
+    registerStringBuiltinsContext(tokenizer, wasm);
+    return tokenizer;
+  };
   if (format === "htk") {
     if (resolverTrusted) {
       if (resolverWarmup) {
         if (typeof module.WasmTokenizer.fromResolverTrustedWarmHtk !== "function") {
           throw new Error("the wasm module has no resolver warmup constructor");
         }
-        return module.WasmTokenizer.fromResolverTrustedWarmHtk(vocabulary);
+        return register(module.WasmTokenizer.fromResolverTrustedWarmHtk(vocabulary));
       }
       if (typeof module.WasmTokenizer.fromResolverTrustedHtk !== "function") {
         throw new Error("the wasm module has no resolver-provenance constructor");
       }
-      return module.WasmTokenizer.fromResolverTrustedHtk(vocabulary);
+      return register(module.WasmTokenizer.fromResolverTrustedHtk(vocabulary));
     }
-    return module.WasmTokenizer.fromHtk(vocabulary);
+    return register(module.WasmTokenizer.fromHtk(vocabulary));
   }
-  if (format === "huggingface") return module.WasmTokenizer.fromHuggingFace(vocabulary);
-  return module.WasmTokenizer.fromTiktoken(vocabulary, scheme);
+  if (format === "huggingface") return register(module.WasmTokenizer.fromHuggingFace(vocabulary));
+  return register(module.WasmTokenizer.fromTiktoken(vocabulary, scheme));
 }
 
 function createIndependentWorker() {
@@ -497,6 +502,7 @@ export async function createTierRuntime(options) {
           directScratch: false,
           memo: optimizationConfiguration.decode.memo,
           dirtyRunBatch: false,
+          stringBuiltins: false,
           raw: true,
         })
       : optimizationConfiguration.decode;

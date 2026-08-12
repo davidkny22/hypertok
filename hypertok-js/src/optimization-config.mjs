@@ -32,6 +32,7 @@ const runtimeDefinitions = Object.freeze([
   Object.freeze(["decodeDirectScratch", true, "auto"]),
   Object.freeze(["decodeMemo", true, "auto"]),
   Object.freeze(["decodeDirtyRunBatch", false, "off"]),
+  Object.freeze(["decodeStringBuiltins", false, "off"]),
 ]);
 
 export const buildOptimizationKeys = Object.freeze(buildDefinitions.map(([key]) => key));
@@ -100,7 +101,8 @@ export function resolveOptimizationConfig(value) {
       key === "decodeCleanUnroll" ||
       key === "decodeDirectScratch" ||
       key === "decodeMemo" ||
-      key === "decodeDirtyRunBatch";
+      key === "decodeDirtyRunBatch" ||
+      key === "decodeStringBuiltins";
     const explicitlyEnabled = candidate && state === "on";
     if (state !== "auto" && state !== "off" && !explicitlyEnabled) {
       const allowed = candidate ? "auto, on, or off" : "auto or off";
@@ -120,18 +122,29 @@ export function resolveOptimizationConfig(value) {
   if (states.decodeBorrowedOutput === "on" && states.decodeUtf16Output === "on") {
     throw new TypeError("decodeBorrowedOutput and decodeUtf16Output cannot both be on");
   }
+  if (
+    states.decodeStringBuiltins === "on" &&
+    (states.decodeBorrowedOutput === "on" || states.decodeUtf16Output === "on")
+  ) {
+    throw new TypeError("decodeStringBuiltins requires the dedicated assembly endpoint");
+  }
   const byteTable = assembly && (states.decodeByteTable === "on" || admitted("decodeByteTable"));
   const mixedRuns =
     assembly &&
     !byteTable &&
     (states.decodeMixedRuns === "on" || admitted("decodeMixedRuns"));
+  const stringBuiltins =
+    assembly &&
+    (states.decodeStringBuiltins === "on" || admitted("decodeStringBuiltins"));
   const decode = Object.freeze({
     assembly,
     borrowedOutput:
       assembly &&
+      !stringBuiltins &&
       (states.decodeBorrowedOutput === "on" || admitted("decodeBorrowedOutput")),
     utf16Output:
       assembly &&
+      !stringBuiltins &&
       nodeRuntime &&
       (states.decodeUtf16Output === "on" || admitted("decodeUtf16Output")),
     hotStrings: assembly && admitted("decodeHotStrings"),
@@ -167,6 +180,7 @@ export function resolveOptimizationConfig(value) {
       mixedRuns &&
       admitted("decodeTable") &&
       (states.decodeDirtyRunBatch === "on" || admitted("decodeDirtyRunBatch")),
+    stringBuiltins,
     raw: !assembly,
   });
 

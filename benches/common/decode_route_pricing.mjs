@@ -142,7 +142,7 @@ export function measureDecodeRoutes({
   warmup = 2,
   now = () => performance.now(),
 }) {
-  if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable", "direct-scratch", "clean-unroll", "borrowed-output", "utf16-output", "direct-borrowed", "cut-direct", "cut-borrowed", "dirty-batch"]).has(candidateMode)) {
+  if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable", "direct-scratch", "clean-unroll", "borrowed-output", "utf16-output", "direct-borrowed", "cut-direct", "cut-borrowed", "dirty-batch", "string-builtins"]).has(candidateMode)) {
     throw new TypeError("candidateMode is not supported by decode route pricing");
   }
   if (!new Set(["repeated", "fresh"]).has(containerRegime)) {

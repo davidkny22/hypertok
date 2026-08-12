@@ -21,6 +21,7 @@ export interface OptimizationOptions {
   decodeDirectScratch?: CandidateOptimizationState;
   decodeMemo?: CandidateOptimizationState;
   decodeDirtyRunBatch?: CandidateOptimizationState;
+  decodeStringBuiltins?: CandidateOptimizationState;
 }
 
 export interface LoadOptions {
