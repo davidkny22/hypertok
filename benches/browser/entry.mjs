@@ -390,7 +390,11 @@ export async function runDecodeRoutePricing({
                       : candidateMode === "borrowed-output"
                         ? { decodeMemo: "off", decodeBorrowedOutput: "on" }
                         : candidateMode === "utf16-output"
-                          ? { decodeMemo: "off", decodeUtf16Output: "on" }
+                          ? {
+                              decodeMemo: "off",
+                              decodeBorrowedOutput: "off",
+                              decodeUtf16Output: "on",
+                            }
                           : candidateMode === "direct-borrowed"
                             ? { decodeMemo: "off", decodeDirectScratch: "on", decodeBorrowedOutput: "on" }
                             : candidateMode === "cut-direct"
@@ -417,6 +421,16 @@ export async function runDecodeRoutePricing({
   } finally {
     baseline.free();
     candidate.free();
+  }
+}
+
+export async function probeDecodeConfig({ vocabulary = "gpt2", optimizations = {} } = {}) {
+  const bytes = await fetchBytes(vocabulary === "gpt2" ? "/assets/gpt2.htk" : "/assets/o200k.htk");
+  const runtime = await fromBytes(bytes, { tier: "single", optimizations });
+  try {
+    return resolveShimRuntime(runtime).decodeStats();
+  } finally {
+    runtime.free();
   }
 }
 

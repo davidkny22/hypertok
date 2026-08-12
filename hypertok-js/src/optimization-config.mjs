@@ -57,6 +57,11 @@ const buildFeatures = Object.freeze([
   "opt-resolver-provenance",
 ]);
 
+const nodeRuntime =
+  typeof process === "object" &&
+  process !== null &&
+  typeof process.versions?.node === "string";
+
 function configurationObject(value) {
   if (value === undefined) return {};
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -127,6 +132,7 @@ export function resolveOptimizationConfig(value) {
       (states.decodeBorrowedOutput === "on" || admitted("decodeBorrowedOutput")),
     utf16Output:
       assembly &&
+      nodeRuntime &&
       (states.decodeUtf16Output === "on" || admitted("decodeUtf16Output")),
     hotStrings: assembly && admitted("decodeHotStrings"),
     table: assembly && admitted("decodeTable"),

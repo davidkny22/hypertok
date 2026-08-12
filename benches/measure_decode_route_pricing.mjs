@@ -19,6 +19,7 @@ const sampleCount = sampleArgument === undefined ? 21 : Number(sampleArgument.sl
 const vocabularyArgument = process.argv.find((argument) => argument.startsWith("--vocabulary="));
 const selectedVocabulary = vocabularyArgument?.slice("--vocabulary=".length) ?? null;
 const quiet = process.argv.includes("--quiet");
+const skipBrowserTiming = process.argv.includes("--skip-browser-timing");
 if (!Number.isInteger(sampleCount) || sampleCount < 1 || sampleCount > 128) {
   throw new TypeError("n must be an integer from 1 through 128");
 }
@@ -52,7 +53,7 @@ const outputPath = path.join(
                   : candidateMode === "borrowed-output"
                     ? "borrowed-output-pricing.json"
                     : candidateMode === "utf16-output"
-                      ? "utf16-output-pricing.json"
+                      ? `node-utf16-output-pricing-n${sampleCount}.json`
                       : candidateMode === "direct-borrowed"
                         ? "direct-borrowed-pricing.json"
                         : candidateMode === "cut-direct"
@@ -68,7 +69,9 @@ if (artifacts.length === 0) throw new TypeError(`unknown vocabulary ${selectedVo
 const compositionModes = new Set(["direct-borrowed", "cut-direct", "cut-borrowed"]);
 const decisionWorkloads = candidateMode === "dirty-batch"
   ? new Set(["chinese", "long-document"])
-  : candidateMode === "direct-scratch" || candidateMode === "latin1-native" || candidateMode === "borrowed-output" || candidateMode === "utf16-output" || compositionModes.has(candidateMode)
+  : candidateMode === "utf16-output"
+    ? new Set(["chinese", "long-document"])
+    : candidateMode === "direct-scratch" || candidateMode === "latin1-native" || candidateMode === "borrowed-output" || compositionModes.has(candidateMode)
   ? new Set(["chinese", "emoji-heavy"])
   : candidateMode === "clean-unroll"
     ? new Set(["english-prose", "source-code", "long-document", "standard-text"])
@@ -149,7 +152,11 @@ async function measureNode(containerRegime, artifact) {
                       : candidateMode === "borrowed-output"
                         ? { decodeMemo: "off", decodeBorrowedOutput: "on" }
                         : candidateMode === "utf16-output"
-                          ? { decodeMemo: "off", decodeUtf16Output: "on" }
+                          ? {
+                              decodeMemo: "off",
+                              decodeBorrowedOutput: "off",
+                              decodeUtf16Output: "on",
+                            }
                           : candidateMode === "direct-borrowed"
                             ? { decodeMemo: "off", decodeDirectScratch: "on", decodeBorrowedOutput: "on" }
                             : candidateMode === "cut-direct"
@@ -192,12 +199,29 @@ const server = await startHarnessServer();
 const { browser, browserVersion, executablePath } = await launchHarnessBrowser();
 const chromeRegimes = {};
 let requestProof;
+let chromeUntouched = null;
 try {
   const page = await browser.newPage();
   const requests = observeRequests(page);
   await page.goto(server.origin, { waitUntil: "load" });
   await page.evaluate(() => globalThis.harnessReady);
   for (const artifact of artifacts) {
+    if (skipBrowserTiming) {
+      chromeUntouched = await page.evaluate(
+        async ({ vocabulary }) => {
+          return globalThis.harness.probeDecodeConfig({
+            vocabulary,
+            optimizations: {
+              decodeMemo: "off",
+              decodeBorrowedOutput: "off",
+              decodeUtf16Output: "on",
+            },
+          });
+        },
+        { vocabulary: artifact.vocabulary },
+      );
+      break;
+    }
     const vocabularyRegimes = {};
     for (const regime of regimes) {
       vocabularyRegimes[regime] = await page.evaluate(
@@ -244,6 +268,7 @@ const chromeOutput = Object.freeze({
   crossOriginIsolated: true,
   requestProof,
   vocabularies: chromeRegimes,
+  untouched: chromeUntouched,
 });
 const output = Object.freeze({
   schemaVersion: 3,
