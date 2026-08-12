@@ -15,7 +15,7 @@ const buildDefinitions = Object.freeze([
 ]);
 
 const runtimeDefinitions = Object.freeze([
-  Object.freeze(["lazyWorkerImage", false, "off"]),
+  Object.freeze(["lazyWorkerImage", true, "auto"]),
   Object.freeze(["decodeAssembly", true, "auto"]),
   Object.freeze(["decodeBoundary", false, "auto"]),
   Object.freeze(["decodeBorrowedOutput", true, "auto"]),

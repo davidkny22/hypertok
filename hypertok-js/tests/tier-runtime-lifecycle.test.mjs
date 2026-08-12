@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { fromBytes } from "../src/index.mjs";
 import { createHuggingFaceShim } from "../src/huggingface-shim.mjs";
+import { createResolvedVocabHandle } from "../src/resolver-provenance.mjs";
 import { resolveShimRuntime } from "../src/shim-runtime.mjs";
 import { createTiktokenShim } from "../src/tiktoken-shim.mjs";
 
@@ -115,6 +116,35 @@ test("automatic tier falls back when the vocabulary cannot export a worker image
     () => fromBytes(qwenVocabulary, { tier: "shared", workers: 1 }),
     /compatible \.htk source/,
   );
+});
+
+test("worker image export is lazy and once-cached for worker and shared tiers", async () => {
+  for (const tier of ["worker", "shared"]) {
+    created.length = 0;
+    delayedOperations = new Set();
+    setIsolation(tier === "shared");
+    const tokenizer = await fromBytes(createResolvedVocabHandle(gpt2Vocabulary), {
+      tier: "single",
+      workers: 1,
+    });
+    try {
+      const resident = resolveShimRuntime(tokenizer);
+      assert.equal(resident.lifecycle().workerImageExports, 0);
+      assert.equal(resident.lifecycle().workerImageBytes, 0);
+
+      const activated = await resident.switchTier(tier);
+      assert.equal(activated.lifecycle().workerImageExports, 1);
+      assert.ok(activated.lifecycle().workerImageBytes > 0);
+      assert.equal(created.length, 1);
+
+      const reused = await activated.switchTier(tier);
+      assert.equal(reused.lifecycle().workerImageExports, 1);
+      assert.equal(reused.lifecycle().workerImageBytes, activated.lifecycle().workerImageBytes);
+      assert.equal(created.length, 1);
+    } finally {
+      tokenizer.free();
+    }
+  }
 });
 
 test("worker-fault-falls-back-to-single", async () => {
