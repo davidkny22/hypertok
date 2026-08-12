@@ -24,8 +24,8 @@ import { vocabularyRegistry } from "./common/vocabularies.mjs";
 import {
   extendMeasuredRow,
   measuredRow,
-  planEscalations,
   publicMeasuredRow,
+  resolveEscalations,
   sampleCountForWorkload,
   samplingKey,
 } from "./common/verdict_sampling.mjs";
@@ -104,36 +104,42 @@ for (const containerRegime of configuration.decodeContainerRegimes) {
   }
 }
 
-const escalationPlan = planEscalations(rows, agreementReceipt, configuration.maxN);
-for (const containerRegime of configuration.decodeContainerRegimes) {
-  for (const { id: vocabulary } of vocabularyRegistry) {
-    for (const reference of nodeReferenceIds(vocabulary)) {
-      const matching = rows.filter((row) =>
-        row.containerRegime === containerRegime &&
-        row.vocabulary === vocabulary &&
-        row.reference === reference &&
-        escalationPlan.targets.has(samplingKey(row))
-      );
-      if (matching.length === 0) continue;
-      const adapter = await createNodeAdapter(reference, vocabulary);
-      try {
-        for (const row of matching) {
-          const workload = workloads.find(({ id }) => id === row.workload);
-          const result = await measureDecodeThroughput(
-            adapter,
-            workload,
-            configuration,
-            containerRegime,
-            { n: configuration.maxN - row.n, warmup: configuration.warmup },
+const escalationPlan = await resolveEscalations(
+  rows,
+  agreementReceipt,
+  configuration.maxN,
+  async (targets) => {
+    for (const containerRegime of configuration.decodeContainerRegimes) {
+      for (const { id: vocabulary } of vocabularyRegistry) {
+        for (const reference of nodeReferenceIds(vocabulary)) {
+          const matching = rows.filter((row) =>
+            row.containerRegime === containerRegime &&
+            row.vocabulary === vocabulary &&
+            row.reference === reference &&
+            targets.has(samplingKey(row))
           );
-          rows[rows.indexOf(row)] = extendMeasuredRow(row, result.samples);
+          if (matching.length === 0) continue;
+          const adapter = await createNodeAdapter(reference, vocabulary);
+          try {
+            for (const row of matching) {
+              const workload = workloads.find(({ id }) => id === row.workload);
+              const result = await measureDecodeThroughput(
+                adapter,
+                workload,
+                configuration,
+                containerRegime,
+                { n: configuration.maxN - row.n, warmup: configuration.warmup },
+              );
+              rows[rows.indexOf(row)] = extendMeasuredRow(row, result.samples);
+            }
+          } finally {
+            adapter.dispose();
+          }
         }
-      } finally {
-        adapter.dispose();
       }
     }
-  }
-}
+  },
+);
 
 for (const containerRegime of configuration.decodeContainerRegimes) {
   for (const { id: vocabulary } of vocabularyRegistry) {
@@ -175,6 +181,7 @@ const output = {
   runIdentity,
   agreementKey: agreementReceipt.agreementKey,
   samplingDecisions: escalationPlan.decisions,
+  samplingRounds: escalationPlan.rounds,
   configuration,
   rows: addHypertokRatios(rows, agreementReceipt).map((row) =>
     benchmarkRow({

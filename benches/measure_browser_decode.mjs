@@ -32,8 +32,8 @@ import { vocabularyRegistry } from "./common/vocabularies.mjs";
 import {
   extendMeasuredRow,
   measuredRow,
-  planEscalations,
   publicMeasuredRow,
+  resolveEscalations,
   sampleCountForWorkload,
   samplingKey,
 } from "./common/verdict_sampling.mjs";
@@ -219,41 +219,47 @@ try {
     }
   }
 
-  escalationPlan = planEscalations(rows, agreementReceipt, configuration.maxN);
-  for (const containerRegime of configuration.decodeContainerRegimes) {
-    for (const { slug, vocabulary, reference } of referencePayloads) {
-      const matching = rows.filter((row) =>
-        row.containerRegime === containerRegime &&
-        row.vocabulary === vocabulary &&
-        row.reference === reference &&
-        escalationPlan.targets.has(samplingKey(row))
-      );
-      if (matching.length === 0) continue;
-      const page = await browser.newPage();
-      const requests = observeRequests(page);
-      requestLedgers.push(requests);
-      try {
-        await page.goto(`${server.origin}/blank`, { waitUntil: "load" });
-        const load = await loadReferencePayload(page, server.origin, slug, vocabulary);
-        if (load.reference !== reference) throw new Error("Escalation reference mismatch");
-        for (const row of matching) {
-          const workload = workloads.find(({ id }) => id === row.workload);
-          const result = await measurePage(
-            page,
-            workload,
-            reference,
-            containerRegime,
-            configuration.maxN - row.n,
-            configuration.warmup,
+  escalationPlan = await resolveEscalations(
+    rows,
+    agreementReceipt,
+    configuration.maxN,
+    async (targets) => {
+      for (const containerRegime of configuration.decodeContainerRegimes) {
+        for (const { slug, vocabulary, reference } of referencePayloads) {
+          const matching = rows.filter((row) =>
+            row.containerRegime === containerRegime &&
+            row.vocabulary === vocabulary &&
+            row.reference === reference &&
+            targets.has(samplingKey(row))
           );
-          rows[rows.indexOf(row)] = extendMeasuredRow(row, result.samples);
+          if (matching.length === 0) continue;
+          const page = await browser.newPage();
+          const requests = observeRequests(page);
+          requestLedgers.push(requests);
+          try {
+            await page.goto(`${server.origin}/blank`, { waitUntil: "load" });
+            const load = await loadReferencePayload(page, server.origin, slug, vocabulary);
+            if (load.reference !== reference) throw new Error("Escalation reference mismatch");
+            for (const row of matching) {
+              const workload = workloads.find(({ id }) => id === row.workload);
+              const result = await measurePage(
+                page,
+                workload,
+                reference,
+                containerRegime,
+                configuration.maxN - row.n,
+                configuration.warmup,
+              );
+              rows[rows.indexOf(row)] = extendMeasuredRow(row, result.samples);
+            }
+            await disposeReferencePayload(page);
+          } finally {
+            await page.close();
+          }
         }
-        await disposeReferencePayload(page);
-      } finally {
-        await page.close();
       }
-    }
-  }
+    },
+  );
 
   for (const containerRegime of configuration.decodeContainerRegimes) {
     for (const { id: vocabulary } of vocabularyRegistry) {
@@ -302,6 +308,7 @@ try {
     runIdentity,
     agreementKey: agreementReceipt.agreementKey,
     samplingDecisions: escalationPlan.decisions,
+    samplingRounds: escalationPlan.rounds,
     configuration,
     rows: addHypertokRatios(rows, agreementReceipt).map((row) =>
       benchmarkRow({

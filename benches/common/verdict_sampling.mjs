@@ -90,8 +90,8 @@ export function planEscalations(rows, agreementReceipt, maxN = VERDICT_MAX_N) {
         Math.min(subject.n, incumbent.n) < maxN;
       const escalate = !noise.resolved && canEscalate;
       if (escalate) {
-        targets.add(samplingKey(subject));
-        targets.add(samplingKey(incumbent));
+        if (subject.n < maxN) targets.add(samplingKey(subject));
+        if (incumbent.n < maxN) targets.add(samplingKey(incumbent));
       }
       decisions.push(Object.freeze({
         vocabulary: subject.vocabulary,
@@ -106,6 +106,39 @@ export function planEscalations(rows, agreementReceipt, maxN = VERDICT_MAX_N) {
     }
   }
   return Object.freeze({ targets, decisions: Object.freeze(decisions) });
+}
+
+export async function resolveEscalations(
+  rows,
+  agreementReceipt,
+  maxN,
+  extendTargets,
+) {
+  if (typeof extendTargets !== "function") {
+    throw new TypeError("verdict sampling requires a target extension function");
+  }
+  let rounds = 0;
+  while (true) {
+    const plan = planEscalations(rows, agreementReceipt, maxN);
+    if (plan.targets.size === 0) {
+      return Object.freeze({ ...plan, rounds });
+    }
+    const before = new Map(
+      [...plan.targets].map((key) => {
+        const row = rows.find((candidate) => samplingKey(candidate) === key);
+        if (row === undefined) throw new Error("verdict sampling target has no measured row");
+        return [key, row.n];
+      }),
+    );
+    await extendTargets(plan.targets);
+    for (const [key, previousN] of before) {
+      const row = rows.find((candidate) => samplingKey(candidate) === key);
+      if (row === undefined || row.n <= previousN) {
+        throw new Error("verdict sampling target extension made no progress");
+      }
+    }
+    rounds += 1;
+  }
 }
 
 export function measuredRow({ row, samples, initialN, escalated = false }) {

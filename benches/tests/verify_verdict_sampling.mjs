@@ -6,6 +6,7 @@ import {
   measuredRow,
   planEscalations,
   publicMeasuredRow,
+  resolveEscalations,
   sampleCountForWorkload,
   samplingKey,
 } from "../common/verdict_sampling.mjs";
@@ -89,6 +90,44 @@ assert.deepEqual(
   [...unresolvedPlan.targets].sort(),
   [samplingKey(unresolvedRows[0]), samplingKey(unresolvedRows[1])].sort(),
 );
+
+const movingRows = [
+  row("hypertok", "standard-text", [100, 100, 100, 100, 100], "fresh"),
+  row("incumbent-a", "standard-text", [80, 80, 80, 80, 80], "fresh"),
+  row("incumbent-b", "standard-text", [98, 100, 102, 99, 101], "fresh"),
+];
+const movingReceipt = receipt("standard-text", {
+  hypertok: "identical",
+  "incumbent-a": "identical",
+  "incumbent-b": "identical",
+});
+const targetRounds = [];
+const movingPlan = await resolveEscalations(
+  movingRows,
+  movingReceipt,
+  11,
+  async (targets) => {
+    targetRounds.push(new Set(targets));
+    for (const key of targets) {
+      const index = movingRows.findIndex((candidate) => samplingKey(candidate) === key);
+      const candidate = movingRows[index];
+      const additions = candidate.reference === "hypertok"
+        ? [82, 82, 82, 82, 82, 82]
+        : candidate.reference === "incumbent-b"
+          ? [70, 70, 70, 70, 70, 70]
+          : [80, 80, 80, 80, 80, 80];
+      movingRows[index] = extendMeasuredRow(candidate, additions);
+    }
+  },
+);
+assert.equal(movingPlan.rounds, 2);
+assert.deepEqual(
+  [...targetRounds[0]].sort(),
+  [samplingKey(movingRows[0]), samplingKey(movingRows[2])].sort(),
+);
+assert.deepEqual([...targetRounds[1]], [samplingKey(movingRows[1])]);
+assert.equal(movingRows.every(({ n }) => n === 11), true);
+assert.equal(movingPlan.targets.size, 0);
 
 const extended = extendMeasuredRow(
   unresolvedRows[0],
