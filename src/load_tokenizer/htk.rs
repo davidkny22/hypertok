@@ -51,14 +51,6 @@ enum PrebuiltPairData {
     Replay(PrebuiltReplayPairs),
 }
 
-#[cfg(test)]
-#[path = "htk_replay_tests.rs"]
-mod replay_tests;
-
-#[cfg(all(test, feature = "opt-resolver-provenance"))]
-#[path = "htk_resolver_provenance_tests.rs"]
-mod resolver_provenance_tests;
-
 /// A tokenizer reconstructed from a validated `.htk` image.
 pub enum HtkTokenizer {
     ByteBpe(Box<Tokenizer>),

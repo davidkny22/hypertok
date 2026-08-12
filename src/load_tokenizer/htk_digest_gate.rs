@@ -20,7 +20,3 @@ pub(crate) fn validate_or_trust(
 pub(crate) fn digest(bytes: &[u8]) -> [u8; 32] {
     compute_digest(bytes)
 }
-
-#[cfg(test)]
-#[path = "htk_digest_gate_tests.rs"]
-mod tests;

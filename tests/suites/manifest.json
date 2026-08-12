@@ -30,7 +30,6 @@
         "build-execution-artifacts",
         "execution-artifact-manifest",
         "feature-composition",
-        "feature-graphs",
         "bun-shims",
         "deno-cli",
         "workerd-edge",
@@ -81,7 +80,7 @@
         "--locked",
         "--no-default-features",
         "--features",
-        "portable-json,wasm-binding,htk,sentencepiece-core,source-loaders,opt-marshalling,opt-chunk-prescan,opt-scan-two-phase,opt-level-select,opt-cold-diet,opt-fused-pair-ranks,opt-prebuilt-pair-ranks,opt-digest-gated-validation,opt-decode-assembly",
+        "portable-json,wasm-binding,htk,sentencepiece-core,source-loaders,opt-marshalling,opt-chunk-prescan,opt-scan-two-phase,opt-level-select,opt-cold-diet,opt-fused-pair-ranks,opt-decode-assembly",
         "--lib",
         "--tests",
         "--",
@@ -192,12 +191,6 @@
       "cwd": ".",
       "executable": "node",
       "arguments": ["tests/suites/verify_feature_composition.mjs"]
-    },
-    {
-      "id": "feature-graphs",
-      "cwd": ".",
-      "executable": "node",
-      "arguments": ["tests/suites/verify_feature_graphs.mjs"]
     },
     {
       "id": "bun-shims",

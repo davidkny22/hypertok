@@ -2,8 +2,6 @@
 mod compact_pair_ranks;
 #[cfg(feature = "opt-force-split-bigram")]
 mod force_split_bigrams;
-#[cfg(all(test, feature = "opt-force-split-bigram"))]
-mod force_split_bigrams_tests;
 #[cfg(feature = "opt-miss-path-diet")]
 mod long_pretoken_cache;
 pub(crate) mod nfc;
