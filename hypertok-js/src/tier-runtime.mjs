@@ -502,6 +502,7 @@ export async function createTierRuntime(options) {
           directScratch: false,
           memo: optimizationConfiguration.decode.memo,
           dirtyRunBatch: false,
+          runStitcher: false,
           stringBuiltins: false,
           raw: true,
         })

@@ -113,6 +113,7 @@ test("public explicit native Latin-1 decode reaches the packaged dirty path", as
     decodeMemo: "off",
     decodeLatin1Native: "on",
     decodeDirectScratch: "off",
+    decodeRunStitcher: "off",
   });
   try {
     const fixture = dirtyFixture(handle);
@@ -132,6 +133,7 @@ test("public explicit portable Latin-1 decode reaches the packaged dirty path", 
     decodeMemo: "off",
     decodeLatin1Portable: "on",
     decodeDirectScratch: "off",
+    decodeRunStitcher: "off",
   });
   try {
     const fixture = dirtyFixture(handle);
@@ -208,6 +210,7 @@ test("public explicit fused validation reaches a dirty assembly fallback", async
   const { handle, runtime } = await loaded({
     decodeFusedValidation: "on",
     decodeBorrowedOutput: "off",
+    decodeRunStitcher: "off",
   });
   try {
     const fatal = new TextDecoder("utf-8", { fatal: true });
@@ -251,7 +254,11 @@ test("public explicit lean dispatch preserves decode stats and free semantics", 
 });
 
 test("public borrowed output decodes the packaged wasm view synchronously", async () => {
-  const { handle, runtime } = await loaded({ decodeMemo: "off", decodeBorrowedOutput: "on" });
+  const { handle, runtime } = await loaded({
+    decodeMemo: "off",
+    decodeBorrowedOutput: "on",
+    decodeRunStitcher: "off",
+  });
   try {
     const fixture = dirtyFixture(handle);
     assert.equal(handle.decode(fixture.ids), fixture.text);
@@ -275,6 +282,7 @@ test("public UTF-16 output preserves exact dense decode through the packaged was
     decodeMemo: "off",
     decodeUtf16Output: "on",
     decodeBorrowedOutput: "off",
+    decodeRunStitcher: "off",
   });
   try {
     const fixture = dirtyFixture(handle);
@@ -314,6 +322,7 @@ test("public direct scratch routes high-dirty arrays through reusable validated 
     decodeMemo: "off",
     decodeDirectScratch: "on",
     decodeBorrowedOutput: "off",
+    decodeRunStitcher: "off",
   });
   try {
     const fixture = dirtyFixture(handle);
@@ -357,6 +366,38 @@ test("public automatic dirty-run batching preserves an explicit off refuge", asy
     assert.equal(refugeStats.tableState.dirtyBatchCalls, 0);
   } finally {
     automatic.handle.free();
+    refuge.handle.free();
+  }
+});
+
+test("public run stitcher removes segment routing while preserving an off refuge", async () => {
+  const stitched = await loaded({ decodeMemo: "off", decodeRunStitcher: "on" });
+  const refuge = await loaded({ decodeMemo: "off", decodeRunStitcher: "off" });
+  try {
+    const byteIds = singleByteIds(stitched.handle, [0x41, 0x82, 0xa9, 0xac, 0xc3, 0xe2]);
+    const ids = Uint32Array.from([
+      byteIds.get(0xc3),
+      byteIds.get(0xa9),
+      ...Array.from({ length: 10 }, () => byteIds.get(0x41)),
+      byteIds.get(0xe2),
+      byteIds.get(0x82),
+      byteIds.get(0xac),
+    ]);
+    const expected = `\u00e9${"A".repeat(10)}\u20ac`;
+    assert.equal(stitched.handle.decode(ids), expected);
+    assert.equal(refuge.handle.decode(ids), expected);
+    const stitchedStats = stitched.runtime.decodeStats();
+    const refugeStats = refuge.runtime.decodeStats();
+    assert.equal(stitchedStats.runStitcher, true);
+    assert.equal(stitchedStats.tableState.runStitcherEnabled, true);
+    assert.equal(stitchedStats.tableState.runStitcherCalls, 1);
+    assert.equal(stitchedStats.tableState.dirtyBatchCalls, 1);
+    assert.equal(stitchedStats.assembly.decoderCalls, 0);
+    assert.equal(refugeStats.runStitcher, false);
+    assert.equal(refugeStats.tableState.runStitcherEnabled, false);
+    assert.equal(refugeStats.tableState.runStitcherCalls, 0);
+  } finally {
+    stitched.handle.free();
     refuge.handle.free();
   }
 });

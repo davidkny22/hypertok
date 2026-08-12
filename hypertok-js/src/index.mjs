@@ -113,6 +113,7 @@ async function sentencePieceRuntime(bytes, options, moduleSource, resolverTruste
     mixedRuns: false,
     runCache: false,
     dirtyRunBatch: false,
+    runStitcher: false,
     stringBuiltins: false,
   });
   let closed = false;

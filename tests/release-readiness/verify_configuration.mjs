@@ -29,6 +29,7 @@ assert.deepEqual(automatic.decode, {
   directScratch: true,
   memo: true,
   dirtyRunBatch: true,
+  runStitcher: false,
   stringBuiltins: false,
   raw: false,
 });
@@ -99,6 +100,7 @@ assert.deepEqual(tableOff.decode, {
   directScratch: false,
   memo: true,
   dirtyRunBatch: false,
+  runStitcher: false,
   stringBuiltins: false,
   raw: false,
 });
@@ -120,6 +122,7 @@ assert.deepEqual(assemblyOff.decode, {
   directScratch: false,
   memo: true,
   dirtyRunBatch: false,
+  runStitcher: false,
   stringBuiltins: false,
   raw: true,
 });
@@ -206,6 +209,16 @@ assert.equal(dirtyRunBatchOn.decode.dirtyRunBatch, true);
 assert.deepEqual(dirtyRunBatchOn.overrides, [
   { path: "hypertok.optimizations.decodeDirtyRunBatch", value: "on" },
 ]);
+const runStitcherOn = resolveOptimizationConfig({ decodeRunStitcher: "on" });
+assert.equal(runStitcherOn.states.decodeRunStitcher, "on");
+assert.equal(runStitcherOn.decode.runStitcher, true);
+assert.deepEqual(runStitcherOn.overrides, [
+  { path: "hypertok.optimizations.decodeRunStitcher", value: "on" },
+]);
+assert.equal(
+  resolveOptimizationConfig({ decodeDirtyRunBatch: "off" }).decode.runStitcher,
+  false,
+);
 assert.throws(
   () => resolveOptimizationConfig({ decodeByteTable: "on", decodeMixedRuns: "on" }),
   /cannot both be on/,

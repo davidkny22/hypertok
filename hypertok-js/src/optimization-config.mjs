@@ -32,6 +32,7 @@ const runtimeDefinitions = Object.freeze([
   Object.freeze(["decodeDirectScratch", true, "auto"]),
   Object.freeze(["decodeMemo", true, "auto"]),
   Object.freeze(["decodeDirtyRunBatch", true, "auto"]),
+  Object.freeze(["decodeRunStitcher", false, "off"]),
   Object.freeze(["decodeStringBuiltins", false, "off"]),
 ]);
 
@@ -102,6 +103,7 @@ export function resolveOptimizationConfig(value) {
       key === "decodeDirectScratch" ||
       key === "decodeMemo" ||
       key === "decodeDirtyRunBatch" ||
+      key === "decodeRunStitcher" ||
       key === "decodeStringBuiltins";
     const explicitlyEnabled = candidate && state === "on";
     if (state !== "auto" && state !== "off" && !explicitlyEnabled) {
@@ -136,6 +138,10 @@ export function resolveOptimizationConfig(value) {
   const stringBuiltins =
     assembly &&
     (states.decodeStringBuiltins === "on" || admitted("decodeStringBuiltins"));
+  const dirtyRunBatch =
+    mixedRuns &&
+    admitted("decodeTable") &&
+    (states.decodeDirtyRunBatch === "on" || admitted("decodeDirtyRunBatch"));
   const decode = Object.freeze({
     assembly,
     borrowedOutput:
@@ -176,10 +182,10 @@ export function resolveOptimizationConfig(value) {
       admitted("decodeTable") &&
       (states.decodeDirectScratch === "on" || admitted("decodeDirectScratch")),
     memo: states.decodeMemo === "on" || admitted("decodeMemo"),
-    dirtyRunBatch:
-      mixedRuns &&
-      admitted("decodeTable") &&
-      (states.decodeDirtyRunBatch === "on" || admitted("decodeDirtyRunBatch")),
+    dirtyRunBatch,
+    runStitcher:
+      dirtyRunBatch &&
+      (states.decodeRunStitcher === "on" || admitted("decodeRunStitcher")),
     stringBuiltins,
     raw: !assembly,
   });

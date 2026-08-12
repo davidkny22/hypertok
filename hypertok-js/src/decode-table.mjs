@@ -394,6 +394,13 @@ export function createDecodeTable(core, options = {}) {
   if (useDirtyRunBatch && !useMixedRuns) {
     throw new TypeError("dirty-run batching requires mixed-run decode");
   }
+  const useRunStitcher = options.runStitcher ?? false;
+  if (typeof useRunStitcher !== "boolean") {
+    throw new TypeError("runStitcher must be a boolean");
+  }
+  if (useRunStitcher && !useDirtyRunBatch) {
+    throw new TypeError("run stitcher requires dirty-run batching");
+  }
   const maxMixedDirtyDensity = density(options.maxMixedDirtyDensity, 0.5);
   const mixedRunPenalty = nonnegativeNumber(
     options.mixedRunPenalty,
@@ -421,6 +428,7 @@ export function createDecodeTable(core, options = {}) {
   let dirtyBatchCalls = 0;
   let dirtyBatchRuns = 0;
   let dirtyBatchFallbackCalls = 0;
+  let runStitcherCalls = 0;
   let largeFallbackCalls = 0;
   let dirtyFallbackCalls = 0;
   let unknownFallbackCalls = 0;
@@ -620,11 +628,102 @@ export function createDecodeTable(core, options = {}) {
     return { sampleCount, sampledDirty, unknown: false };
   }
 
+  function decodeDirtyRuns(ids, runs) {
+    let decodedRuns = null;
+    if (
+      runs.length > 1 &&
+      runs.every(({ bytes }) => !bytes.includes(DIRTY_BATCH_SEPARATOR_BYTES))
+    ) {
+      const decoded = byteTable.decodeByteString(
+        runs.map(({ bytes }) => bytes).join(DIRTY_BATCH_SEPARATOR_BYTES),
+      );
+      const separated = decoded.split(DIRTY_BATCH_SEPARATOR_TEXT);
+      if (separated.length === runs.length) {
+        decodedRuns = separated;
+        dirtyBatchCalls += 1;
+        dirtyBatchRuns += runs.length;
+      }
+    }
+    if (decodedRuns !== null) return decodedRuns;
+    if (runs.length > 1) dirtyBatchFallbackCalls += 1;
+    return runs.map(({ start, end, bytes }) => {
+      const decodeRun = () => byteTable.decodeByteString(bytes);
+      return runCache === null
+        ? decodeRun()
+        : runCache.decode(ids, start, end, decodeRun);
+    });
+  }
+
+  function decodeRunStitched(ids, prepared) {
+    const pieces = [];
+    const runs = [];
+    let clean = prepared.prefix;
+    let dirtyBytes = "";
+    let dirtyStart = 0;
+
+    const flushClean = () => {
+      if (clean.length === 0) return;
+      pieces.push(clean);
+      clean = "";
+    };
+    const flushDirty = (end) => {
+      if (dirtyBytes.length === 0) return;
+      const runIndex = runs.length;
+      runs.push(Object.freeze({ start: dirtyStart, end, bytes: dirtyBytes }));
+      pieces.push(runIndex);
+      dirtyBytes = "";
+      dirtyRunCalls += 1;
+    };
+
+    for (let index = prepared.firstMiss; index < ids.length; index += 1) {
+      const id = ids[index];
+      const state = inspect(id);
+      if (state === 3) {
+        unknownFallbackCalls += 1;
+        return fallback(ids);
+      }
+      if (state === 1) {
+        flushDirty(index);
+        const value = materialize(id);
+        if (typeof value !== "string") {
+          throw new Error("decode table materialization did not converge");
+        }
+        clean += value;
+        continue;
+      }
+      flushClean();
+      if (dirtyBytes.length === 0) dirtyStart = index;
+      const value = byteTable.byteString(id);
+      if (typeof value !== "string") {
+        throw new Error("dirty byte-string table did not converge");
+      }
+      dirtyBytes += value;
+    }
+    flushDirty(ids.length);
+    flushClean();
+
+    if (runs.length === 0) {
+      tableCalls += 1;
+      runStitcherCalls += 1;
+      return pieces.join("");
+    }
+    const decodedRuns = decodeDirtyRuns(ids, runs);
+    let output = "";
+    for (const piece of pieces) {
+      output += typeof piece === "string" ? piece : decodedRuns[piece];
+    }
+    tableCalls += 1;
+    mixedCalls += 1;
+    runStitcherCalls += 1;
+    return output;
+  }
+
   function decodeCareful(input, attempt, sample = null) {
     const prepared = useFusedValidation
       ? fusedTokenIds(input, attempt)
       : { ids: strictTokenIds(input), firstMiss: 0, prefix: "" };
     const { ids } = prepared;
+    if (useRunStitcher) return decodeRunStitched(ids, prepared);
     const sampled = sample ?? sampleDirty(ids);
     if (sampled.unknown) {
       unknownFallbackCalls += 1;
@@ -722,30 +821,7 @@ export function createDecodeTable(core, options = {}) {
         dirtyRunCalls += 1;
       }
 
-      let decodedRuns = null;
-      if (
-        runs.length > 1 &&
-        runs.every(({ bytes }) => !bytes.includes(DIRTY_BATCH_SEPARATOR_BYTES))
-      ) {
-        const decoded = byteTable.decodeByteString(
-          runs.map(({ bytes }) => bytes).join(DIRTY_BATCH_SEPARATOR_BYTES),
-        );
-        const separated = decoded.split(DIRTY_BATCH_SEPARATOR_TEXT);
-        if (separated.length === runs.length) {
-          decodedRuns = separated;
-          dirtyBatchCalls += 1;
-          dirtyBatchRuns += runs.length;
-        }
-      }
-      if (decodedRuns === null) {
-        if (runs.length > 1) dirtyBatchFallbackCalls += 1;
-        decodedRuns = runs.map(({ start, end, bytes }) => {
-          const decodeRun = () => byteTable.decodeByteString(bytes);
-          return runCache === null
-            ? decodeRun()
-            : runCache.decode(ids, start, end, decodeRun);
-        });
-      }
+      const decodedRuns = decodeDirtyRuns(ids, runs);
       for (const piece of pieces) {
         output += typeof piece === "string" ? piece : decodedRuns[piece];
       }
@@ -799,13 +875,13 @@ export function createDecodeTable(core, options = {}) {
       tableCalls += 1;
       return "";
     }
-    if (ids.length > maxTableIds) {
+    if (!useRunStitcher && ids.length > maxTableIds) {
       strictTokenIds(ids);
       largeFallbackCalls += 1;
       return fallback(ids);
     }
     let sampled = null;
-    if (preparedByScratch) {
+    if (preparedByScratch && !useRunStitcher) {
       sampled = sampleDirty(ids);
       if (sampled.unknown) {
         unknownFallbackCalls += 1;
@@ -870,6 +946,8 @@ export function createDecodeTable(core, options = {}) {
       directScratchCalls,
       directScratchState: directScratch?.stats() ?? null,
       dirtyRunBatchEnabled: useDirtyRunBatch,
+      runStitcherEnabled: useRunStitcher,
+      runStitcherCalls,
       dirtyBatchCalls,
       dirtyBatchRuns,
       dirtyBatchFallbackCalls,
