@@ -28,6 +28,8 @@ assert.deepEqual(automatic.decode, {
   cleanUnroll: false,
   directScratch: true,
   memo: true,
+  dirtyRunBatch: true,
+  stringBuiltins: false,
   raw: false,
 });
 assert.deepEqual(automatic.admitted, admittedOptimizations);
@@ -96,6 +98,8 @@ assert.deepEqual(tableOff.decode, {
   cleanUnroll: false,
   directScratch: false,
   memo: true,
+  dirtyRunBatch: false,
+  stringBuiltins: false,
   raw: false,
 });
 const assemblyOff = resolveOptimizationConfig({ decodeAssembly: "off" });
@@ -115,6 +119,8 @@ assert.deepEqual(assemblyOff.decode, {
   cleanUnroll: false,
   directScratch: false,
   memo: true,
+  dirtyRunBatch: false,
+  stringBuiltins: false,
   raw: true,
 });
 
@@ -193,6 +199,12 @@ assert.equal(memoOn.states.decodeMemo, "on");
 assert.equal(memoOn.decode.memo, true);
 assert.deepEqual(memoOn.overrides, [
   { path: "hypertok.optimizations.decodeMemo", value: "on" },
+]);
+const dirtyRunBatchOn = resolveOptimizationConfig({ decodeDirtyRunBatch: "on" });
+assert.equal(dirtyRunBatchOn.states.decodeDirtyRunBatch, "on");
+assert.equal(dirtyRunBatchOn.decode.dirtyRunBatch, true);
+assert.deepEqual(dirtyRunBatchOn.overrides, [
+  { path: "hypertok.optimizations.decodeDirtyRunBatch", value: "on" },
 ]);
 assert.throws(
   () => resolveOptimizationConfig({ decodeByteTable: "on", decodeMixedRuns: "on" }),

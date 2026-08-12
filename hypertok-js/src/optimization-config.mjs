@@ -31,7 +31,7 @@ const runtimeDefinitions = Object.freeze([
   Object.freeze(["decodeCleanUnroll", false, "off"]),
   Object.freeze(["decodeDirectScratch", true, "auto"]),
   Object.freeze(["decodeMemo", true, "auto"]),
-  Object.freeze(["decodeDirtyRunBatch", false, "off"]),
+  Object.freeze(["decodeDirtyRunBatch", true, "auto"]),
   Object.freeze(["decodeStringBuiltins", false, "off"]),
 ]);
 

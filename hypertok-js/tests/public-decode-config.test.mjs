@@ -329,6 +329,38 @@ test("public direct scratch routes high-dirty arrays through reusable validated 
   }
 });
 
+test("public automatic dirty-run batching preserves an explicit off refuge", async () => {
+  const automatic = await loaded({ decodeMemo: "off" });
+  const refuge = await loaded({ decodeMemo: "off", decodeDirtyRunBatch: "off" });
+  try {
+    const byteIds = singleByteIds(automatic.handle, [0x41, 0x82, 0xa9, 0xac, 0xc3, 0xe2]);
+    const clean = Array.from({ length: 10 }, () => byteIds.get(0x41));
+    const ids = [
+      byteIds.get(0xc3),
+      byteIds.get(0xa9),
+      ...clean,
+      byteIds.get(0xe2),
+      byteIds.get(0x82),
+      byteIds.get(0xac),
+      ...clean,
+    ];
+    const expected = `\u00e9${"A".repeat(10)}\u20ac${"A".repeat(10)}`;
+    assert.equal(automatic.handle.decode(Uint32Array.from(ids)), expected);
+    assert.equal(refuge.handle.decode(Uint32Array.from(ids)), expected);
+    const automaticStats = automatic.runtime.decodeStats();
+    const refugeStats = refuge.runtime.decodeStats();
+    assert.equal(automaticStats.dirtyRunBatch, true);
+    assert.equal(automaticStats.tableState.dirtyRunBatchEnabled, true);
+    assert.equal(automaticStats.tableState.dirtyBatchCalls, 1);
+    assert.equal(refugeStats.dirtyRunBatch, false);
+    assert.equal(refugeStats.tableState.dirtyRunBatchEnabled, false);
+    assert.equal(refugeStats.tableState.dirtyBatchCalls, 0);
+  } finally {
+    automatic.handle.free();
+    refuge.handle.free();
+  }
+});
+
 test("public clean unroll reaches the packed table", async () => {
   const { handle, runtime } = await loaded({ decodeMemo: "off", decodeCleanUnroll: "on" });
   try {
