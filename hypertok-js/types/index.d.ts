@@ -20,6 +20,7 @@ export interface OptimizationOptions {
   decodeCleanUnroll?: CandidateOptimizationState;
   decodeDirectScratch?: CandidateOptimizationState;
   decodeMemo?: CandidateOptimizationState;
+  decodeDirtyRunBatch?: CandidateOptimizationState;
 }
 
 export interface LoadOptions {

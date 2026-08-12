@@ -62,6 +62,7 @@ export function createComposedDecoder(core, options = {}) {
   const useCleanUnroll = options.cleanUnroll === true;
   const useDirectScratch = options.directScratch === true;
   const useMemo = options.memo === true;
+  const useDirtyRunBatch = options.dirtyRunBatch === true;
   const useHotStrings = options.hotStrings === true;
   if (useBorrowedOutput && !useAssembly) {
     throw new TypeError("borrowed output decode requires assembly decode");
@@ -80,6 +81,9 @@ export function createComposedDecoder(core, options = {}) {
   }
   if (useRunCache && !useMixedRuns) {
     throw new TypeError("maximal-run cache requires mixed-run decode");
+  }
+  if (useDirtyRunBatch && !useMixedRuns) {
+    throw new TypeError("dirty-run batching requires mixed-run decode");
   }
   if (useNativeLatin1 && !useTable) {
     throw new TypeError("native Latin-1 decode requires table decode");
@@ -119,6 +123,7 @@ export function createComposedDecoder(core, options = {}) {
       leanDispatch: useLeanDispatch,
       cleanUnroll: useCleanUnroll,
       directScratch: useDirectScratch,
+      dirtyRunBatch: useDirtyRunBatch,
     });
     active = table;
   }
@@ -151,6 +156,7 @@ export function createComposedDecoder(core, options = {}) {
       cleanUnroll: useCleanUnroll,
       directScratch: useDirectScratch,
       memo: useMemo,
+      dirtyRunBatch: useDirtyRunBatch,
       hotStrings: useHotStrings,
       assembly: assembly.stats(),
       tableState: table?.stats() ?? null,

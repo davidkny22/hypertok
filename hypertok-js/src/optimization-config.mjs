@@ -31,6 +31,7 @@ const runtimeDefinitions = Object.freeze([
   Object.freeze(["decodeCleanUnroll", false, "off"]),
   Object.freeze(["decodeDirectScratch", true, "auto"]),
   Object.freeze(["decodeMemo", true, "auto"]),
+  Object.freeze(["decodeDirtyRunBatch", false, "off"]),
 ]);
 
 export const buildOptimizationKeys = Object.freeze(buildDefinitions.map(([key]) => key));
@@ -93,7 +94,8 @@ export function resolveOptimizationConfig(value) {
       key === "decodeLeanDispatch" ||
       key === "decodeCleanUnroll" ||
       key === "decodeDirectScratch" ||
-      key === "decodeMemo";
+      key === "decodeMemo" ||
+      key === "decodeDirtyRunBatch";
     const explicitlyEnabled = candidate && state === "on";
     if (state !== "auto" && state !== "off" && !explicitlyEnabled) {
       const allowed = candidate ? "auto, on, or off" : "auto or off";
@@ -155,6 +157,10 @@ export function resolveOptimizationConfig(value) {
       admitted("decodeTable") &&
       (states.decodeDirectScratch === "on" || admitted("decodeDirectScratch")),
     memo: states.decodeMemo === "on" || admitted("decodeMemo"),
+    dirtyRunBatch:
+      mixedRuns &&
+      admitted("decodeTable") &&
+      (states.decodeDirtyRunBatch === "on" || admitted("decodeDirtyRunBatch")),
     raw: !assembly,
   });
 

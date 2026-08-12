@@ -496,6 +496,7 @@ export async function createTierRuntime(options) {
           cleanUnroll: false,
           directScratch: false,
           memo: optimizationConfiguration.decode.memo,
+          dirtyRunBatch: false,
           raw: true,
         })
       : optimizationConfiguration.decode;

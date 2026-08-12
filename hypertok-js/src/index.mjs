@@ -112,6 +112,7 @@ async function sentencePieceRuntime(bytes, options, moduleSource, resolverTruste
     byteTable: false,
     mixedRuns: false,
     runCache: false,
+    dirtyRunBatch: false,
   });
   let closed = false;
   const ensureOpen = () => {

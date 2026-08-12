@@ -14,14 +14,24 @@ const benchesDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryDirectory = path.resolve(benchesDirectory, "..");
 const candidateArgument = process.argv.find((argument) => argument.startsWith("--candidate="));
 const candidateMode = candidateArgument?.slice("--candidate=".length) ?? "byte";
-if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable", "direct-scratch", "clean-unroll", "borrowed-output", "utf16-output", "direct-borrowed", "cut-direct", "cut-borrowed"]).has(candidateMode)) {
+const sampleArgument = process.argv.find((argument) => argument.startsWith("--n="));
+const sampleCount = sampleArgument === undefined ? 21 : Number(sampleArgument.slice("--n=".length));
+const vocabularyArgument = process.argv.find((argument) => argument.startsWith("--vocabulary="));
+const selectedVocabulary = vocabularyArgument?.slice("--vocabulary=".length) ?? null;
+const quiet = process.argv.includes("--quiet");
+if (!Number.isInteger(sampleCount) || sampleCount < 1 || sampleCount > 128) {
+  throw new TypeError("n must be an integer from 1 through 128");
+}
+if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable", "direct-scratch", "clean-unroll", "borrowed-output", "utf16-output", "direct-borrowed", "cut-direct", "cut-borrowed", "dirty-batch"]).has(candidateMode)) {
   throw new TypeError("candidate is not supported by decode route pricing");
 }
 const outputPath = path.join(
   repositoryDirectory,
   "results",
   "decode-dirty-campaign",
-  candidateMode === "mixed"
+  candidateMode === "dirty-batch"
+    ? `dirty-batch${selectedVocabulary === null ? "" : `-${selectedVocabulary}`}-pricing-n${sampleCount}.json`
+    : candidateMode === "mixed"
     ? "mixed-route-pricing.json"
     : candidateMode === "fused"
       ? "validation-pricing.json"
@@ -51,9 +61,14 @@ const outputPath = path.join(
                             ? "cut-borrowed-pricing.json"
       : "route-pricing.json",
 );
-const artifacts = vocabularyRegistry.map(({ id }) => prepareVocabularyArtifact(id));
+const artifacts = vocabularyRegistry
+  .filter(({ id }) => selectedVocabulary === null || id === selectedVocabulary)
+  .map(({ id }) => prepareVocabularyArtifact(id));
+if (artifacts.length === 0) throw new TypeError(`unknown vocabulary ${selectedVocabulary}`);
 const compositionModes = new Set(["direct-borrowed", "cut-direct", "cut-borrowed"]);
-const decisionWorkloads = candidateMode === "direct-scratch" || candidateMode === "latin1-native" || candidateMode === "borrowed-output" || candidateMode === "utf16-output" || compositionModes.has(candidateMode)
+const decisionWorkloads = candidateMode === "dirty-batch"
+  ? new Set(["chinese", "long-document"])
+  : candidateMode === "direct-scratch" || candidateMode === "latin1-native" || candidateMode === "borrowed-output" || candidateMode === "utf16-output" || compositionModes.has(candidateMode)
   ? new Set(["chinese", "emoji-heavy"])
   : candidateMode === "clean-unroll"
     ? new Set(["english-prose", "source-code", "long-document", "standard-text"])
@@ -61,12 +76,17 @@ const decisionWorkloads = candidateMode === "direct-scratch" || candidateMode ==
 const workloads = loadCorpus().filter(({ id }) =>
   decisionWorkloads === null || decisionWorkloads.has(id)
 );
+const workloadsFor = (artifact) => candidateMode !== "dirty-batch"
+  ? workloads
+  : workloads.filter(({ id }) =>
+      artifact.vocabulary === "gpt2" ? id === "long-document" : id === "chinese"
+    );
 const regimes = candidateMode === "memo"
   ? ["repeated", "fresh"]
-  : candidateMode === "direct-scratch" || candidateMode === "clean-unroll" || candidateMode === "latin1-native" || candidateMode === "borrowed-output" || candidateMode === "utf16-output" || compositionModes.has(candidateMode)
+  : candidateMode === "dirty-batch" || candidateMode === "direct-scratch" || candidateMode === "clean-unroll" || candidateMode === "latin1-native" || candidateMode === "borrowed-output" || candidateMode === "utf16-output" || compositionModes.has(candidateMode)
     ? ["fresh"]
     : ["repeated"];
-const targetBytesPerSample = candidateMode === "latin1-native" || candidateMode === "borrowed-output" || candidateMode === "utf16-output" || compositionModes.has(candidateMode)
+const targetBytesPerSample = candidateMode === "dirty-batch" || candidateMode === "latin1-native" || candidateMode === "borrowed-output" || candidateMode === "utf16-output" || compositionModes.has(candidateMode)
   ? 16_777_216
   : 1_048_576;
 
@@ -98,7 +118,9 @@ async function measureNode(containerRegime, artifact) {
                           ? { decodeMemo: "off", decodeDirectScratch: "off", decodeBorrowedOutput: "off" }
                           : candidateMode === "cut-direct" || candidateMode === "cut-borrowed"
                             ? { decodeMemo: "off", decodeDirectScratch: "on", decodeBorrowedOutput: "on" }
-            : { decodeMixedRuns: "off" },
+            : candidateMode === "dirty-batch"
+              ? { decodeMemo: "off", decodeDirtyRunBatch: "off" }
+              : { decodeMixedRuns: "off" },
   });
   const candidate = await fromBytes(artifact.bytes, {
     tier: "single",
@@ -134,16 +156,19 @@ async function measureNode(containerRegime, artifact) {
                               ? { decodeMemo: "off", decodeDirectScratch: "off", decodeBorrowedOutput: "on" }
                               : candidateMode === "cut-borrowed"
                                 ? { decodeMemo: "off", decodeDirectScratch: "on", decodeBorrowedOutput: "off" }
-              : { decodeByteTable: "on" },
+              : candidateMode === "dirty-batch"
+                ? { decodeMemo: "off", decodeDirtyRunBatch: "on" }
+                : { decodeByteTable: "on" },
   });
   try {
     return measureDecodeRoutes({
       baseline,
       candidate,
-      workloads,
+      workloads: workloadsFor(artifact),
       candidateMode,
       containerRegime,
       targetBytesPerSample,
+      n: sampleCount,
       baselineStats: () => resolveShimRuntime(baseline).decodeStats(),
       candidateStats: () => resolveShimRuntime(candidate).decodeStats(),
     });
@@ -176,22 +201,23 @@ try {
     const vocabularyRegimes = {};
     for (const regime of regimes) {
       vocabularyRegimes[regime] = await page.evaluate(
-        ({ mode, containerRegime, vocabulary, workloadIds, sampleBytes }) =>
+        ({ mode, containerRegime, vocabulary, workloadIds, sampleBytes, samples }) =>
           globalThis.harness.runDecodeRoutePricing({
             candidateMode: mode,
             containerRegime,
             vocabulary,
             workloadIds,
             targetBytesPerSample: sampleBytes,
-            n: 21,
+            n: samples,
             warmup: 2,
           }),
         {
           mode: candidateMode,
           containerRegime: regime,
           vocabulary: artifact.vocabulary,
-          workloadIds: workloads.map(({ id }) => id),
+          workloadIds: workloadsFor(artifact).map(({ id }) => id),
           sampleBytes: targetBytesPerSample,
+          samples: sampleCount,
         },
       );
     }
@@ -222,6 +248,7 @@ const chromeOutput = Object.freeze({
 const output = Object.freeze({
   schemaVersion: 3,
   candidateMode,
+  sampleCount,
   artifacts: artifacts.map(({ vocabulary, sourceSha256, sha256 }) =>
     Object.freeze({ vocabulary, sourceSha256, htkSha256: sha256 })
   ),
@@ -230,4 +257,4 @@ const output = Object.freeze({
 });
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 fs.writeFileSync(outputPath, `${JSON.stringify(output, null, 2)}\n`);
-console.log(JSON.stringify(output, null, 2));
+console.log(quiet ? JSON.stringify({ outputPath, sampleCount }) : JSON.stringify(output, null, 2));

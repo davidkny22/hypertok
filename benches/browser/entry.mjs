@@ -359,7 +359,9 @@ export async function runDecodeRoutePricing({
                           ? { decodeMemo: "off", decodeDirectScratch: "off", decodeBorrowedOutput: "off" }
                           : candidateMode === "cut-direct" || candidateMode === "cut-borrowed"
                             ? { decodeMemo: "off", decodeDirectScratch: "on", decodeBorrowedOutput: "on" }
-          : { decodeMixedRuns: "off" },
+          : candidateMode === "dirty-batch"
+            ? { decodeMemo: "off", decodeDirtyRunBatch: "off" }
+            : { decodeMixedRuns: "off" },
   });
   const candidate = await fromBytes(bytes, {
     tier: "single",
@@ -395,7 +397,9 @@ export async function runDecodeRoutePricing({
                               ? { decodeMemo: "off", decodeDirectScratch: "off", decodeBorrowedOutput: "on" }
                               : candidateMode === "cut-borrowed"
                                 ? { decodeMemo: "off", decodeDirectScratch: "on", decodeBorrowedOutput: "off" }
-          : { decodeByteTable: "on" },
+          : candidateMode === "dirty-batch"
+            ? { decodeMemo: "off", decodeDirtyRunBatch: "on" }
+            : { decodeByteTable: "on" },
   });
   try {
     return measureDecodeRoutes({

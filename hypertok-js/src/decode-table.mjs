@@ -9,6 +9,8 @@ const DEFAULT_MIXED_RUN_PENALTY = 1;
 const DIRTY = 0;
 const UNTOUCHED = 1;
 const MISSING = 2;
+const DIRTY_BATCH_SEPARATOR_BYTES = "\xef\xbf\xbf";
+const DIRTY_BATCH_SEPARATOR_TEXT = "\uffff";
 
 function nonnegativeInteger(value, fallback, name) {
   if (value === undefined) return fallback;
@@ -385,6 +387,13 @@ export function createDecodeTable(core, options = {}) {
   if (useDirectScratch && !useMixedRuns) {
     throw new TypeError("direct ID scratch requires mixed-run decode");
   }
+  const useDirtyRunBatch = options.dirtyRunBatch ?? false;
+  if (typeof useDirtyRunBatch !== "boolean") {
+    throw new TypeError("dirtyRunBatch must be a boolean");
+  }
+  if (useDirtyRunBatch && !useMixedRuns) {
+    throw new TypeError("dirty-run batching requires mixed-run decode");
+  }
   const maxMixedDirtyDensity = density(options.maxMixedDirtyDensity, 0.5);
   const mixedRunPenalty = nonnegativeNumber(
     options.mixedRunPenalty,
@@ -409,6 +418,9 @@ export function createDecodeTable(core, options = {}) {
   let fallbackCalls = 0;
   let mixedCalls = 0;
   let dirtyRunCalls = 0;
+  let dirtyBatchCalls = 0;
+  let dirtyBatchRuns = 0;
+  let dirtyBatchFallbackCalls = 0;
   let largeFallbackCalls = 0;
   let dirtyFallbackCalls = 0;
   let unknownFallbackCalls = 0;
@@ -683,6 +695,65 @@ export function createDecodeTable(core, options = {}) {
     }
 
     let output = prepared.prefix;
+    if (useDirtyRunBatch) {
+      const pieces = [];
+      const runs = [];
+      let index = prepared.firstMiss;
+      while (index < ids.length) {
+        const value = table[ids[index]];
+        if (typeof value === "string") {
+          pieces.push(value);
+          index += 1;
+          continue;
+        }
+        const start = index;
+        let bytes = "";
+        do {
+          const value = byteTable?.byteString(ids[index]);
+          if (typeof value !== "string") {
+            throw new Error("dirty byte-string table did not converge");
+          }
+          bytes += value;
+          index += 1;
+        } while (index < ids.length && table[ids[index]] === DIRTY);
+        const runIndex = runs.length;
+        runs.push(Object.freeze({ start, end: index, bytes }));
+        pieces.push(runIndex);
+        dirtyRunCalls += 1;
+      }
+
+      let decodedRuns = null;
+      if (
+        runs.length > 1 &&
+        runs.every(({ bytes }) => !bytes.includes(DIRTY_BATCH_SEPARATOR_BYTES))
+      ) {
+        const decoded = byteTable.decodeByteString(
+          runs.map(({ bytes }) => bytes).join(DIRTY_BATCH_SEPARATOR_BYTES),
+        );
+        const separated = decoded.split(DIRTY_BATCH_SEPARATOR_TEXT);
+        if (separated.length === runs.length) {
+          decodedRuns = separated;
+          dirtyBatchCalls += 1;
+          dirtyBatchRuns += runs.length;
+        }
+      }
+      if (decodedRuns === null) {
+        if (runs.length > 1) dirtyBatchFallbackCalls += 1;
+        decodedRuns = runs.map(({ start, end, bytes }) => {
+          const decodeRun = () => byteTable.decodeByteString(bytes);
+          return runCache === null
+            ? decodeRun()
+            : runCache.decode(ids, start, end, decodeRun);
+        });
+      }
+      for (const piece of pieces) {
+        output += typeof piece === "string" ? piece : decodedRuns[piece];
+      }
+      tableCalls += 1;
+      mixedCalls += 1;
+      return output;
+    }
+
     let index = prepared.firstMiss;
     while (index < ids.length) {
       const value = table[ids[index]];
@@ -798,6 +869,10 @@ export function createDecodeTable(core, options = {}) {
       directScratchEnabled: useDirectScratch,
       directScratchCalls,
       directScratchState: directScratch?.stats() ?? null,
+      dirtyRunBatchEnabled: useDirtyRunBatch,
+      dirtyBatchCalls,
+      dirtyBatchRuns,
+      dirtyBatchFallbackCalls,
       maxMixedDirtyDensity,
       mixedRunPenalty,
       mixedDensityFallbackCalls,

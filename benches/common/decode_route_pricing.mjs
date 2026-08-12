@@ -120,6 +120,10 @@ function measurePair(left, right, segments, iterations, n, warmup, now, containe
     pairedRatio: summarize(
       rightSamples.map((milliseconds, index) => milliseconds / leftSamples[index]),
     ),
+    samples: Object.freeze({
+      left: Object.freeze(leftSamples),
+      right: Object.freeze(rightSamples),
+    }),
   });
 }
 
@@ -138,7 +142,7 @@ export function measureDecodeRoutes({
   warmup = 2,
   now = () => performance.now(),
 }) {
-  if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable", "direct-scratch", "clean-unroll", "borrowed-output", "utf16-output", "direct-borrowed", "cut-direct", "cut-borrowed"]).has(candidateMode)) {
+  if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable", "direct-scratch", "clean-unroll", "borrowed-output", "utf16-output", "direct-borrowed", "cut-direct", "cut-borrowed", "dirty-batch"]).has(candidateMode)) {
     throw new TypeError("candidateMode is not supported by decode route pricing");
   }
   if (!new Set(["repeated", "fresh"]).has(containerRegime)) {
@@ -159,7 +163,8 @@ export function measureDecodeRoutes({
         candidateMode === "mixed" ||
         candidateMode === "run-cache" ||
         candidateMode === "latin1-native" ||
-        candidateMode === "latin1-portable";
+        candidateMode === "latin1-portable" ||
+        candidateMode === "dirty-batch";
       const candidateShape = usesMixedRoute
         ? mixedRoute(dirty, maxMixedDirtyDensity, mixedRunPenalty)
         : null;
@@ -279,11 +284,11 @@ export function measureDecodeRoutes({
       candidateMode,
       containerRegime,
       maxMixedDirtyDensity:
-        candidateMode === "mixed" || candidateMode === "run-cache"
+        candidateMode === "mixed" || candidateMode === "run-cache" || candidateMode === "dirty-batch"
           ? maxMixedDirtyDensity
           : null,
       mixedRunPenalty:
-        candidateMode === "mixed" || candidateMode === "run-cache" ? mixedRunPenalty : null,
+        candidateMode === "mixed" || candidateMode === "run-cache" || candidateMode === "dirty-batch" ? mixedRunPenalty : null,
       byteTableToAssemblyTimeRatio:
         assembly === null ? null : assembly.right.median / assembly.left.median,
       all,
@@ -300,9 +305,9 @@ export function measureDecodeRoutes({
     candidateMode,
     containerRegime,
     maxMixedDirtyDensity:
-      candidateMode === "mixed" || candidateMode === "run-cache" ? maxMixedDirtyDensity : null,
+      candidateMode === "mixed" || candidateMode === "run-cache" || candidateMode === "dirty-batch" ? maxMixedDirtyDensity : null,
     mixedRunPenalty:
-      candidateMode === "mixed" || candidateMode === "run-cache" ? mixedRunPenalty : null,
+      candidateMode === "mixed" || candidateMode === "run-cache" || candidateMode === "dirty-batch" ? mixedRunPenalty : null,
     rows,
     baselineStats: baselineStats(),
     candidateStats: candidateStats(),
