@@ -20,20 +20,27 @@ const vocabularyArgument = process.argv.find((argument) => argument.startsWith("
 const selectedVocabulary = vocabularyArgument?.slice("--vocabulary=".length) ?? null;
 const workloadArgument = process.argv.find((argument) => argument.startsWith("--workload="));
 const selectedWorkload = workloadArgument?.slice("--workload=".length) ?? null;
+const evidenceLabelArgument = process.argv.find((argument) => argument.startsWith("--evidence-label="));
+const evidenceLabel = evidenceLabelArgument?.slice("--evidence-label=".length) ?? null;
 const quiet = process.argv.includes("--quiet");
 const skipBrowserTiming = process.argv.includes("--skip-browser-timing");
 if (!Number.isInteger(sampleCount) || sampleCount < 1 || sampleCount > 128) {
   throw new TypeError("n must be an integer from 1 through 128");
 }
-if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable", "direct-scratch", "clean-unroll", "borrowed-output", "utf16-output", "direct-borrowed", "cut-direct", "cut-borrowed", "dirty-batch", "string-builtins"]).has(candidateMode)) {
+if (!new Set(["byte", "mixed", "fused", "lean", "memo", "run-cache", "latin1-native", "latin1-portable", "direct-scratch", "clean-unroll", "borrowed-output", "utf16-output", "direct-borrowed", "cut-direct", "cut-borrowed", "dirty-batch", "dirty-batch-composed", "string-builtins"]).has(candidateMode)) {
   throw new TypeError("candidate is not supported by decode route pricing");
 }
-const outputPath = path.join(
+if (evidenceLabel !== null && !/^[a-z0-9-]+$/.test(evidenceLabel)) {
+  throw new TypeError("evidence label must contain only lowercase letters, digits, and hyphens");
+}
+const baseOutputPath = path.join(
   repositoryDirectory,
   "results",
   "decode-dirty-campaign",
   candidateMode === "dirty-batch"
     ? `dirty-batch${selectedVocabulary === null ? "" : `-${selectedVocabulary}`}-pricing-n${sampleCount}.json`
+    : candidateMode === "dirty-batch-composed"
+      ? `dirty-batch-composed${selectedVocabulary === null ? "" : `-${selectedVocabulary}`}-pricing-n${sampleCount}.json`
     : candidateMode === "string-builtins"
       ? `string-builtins${selectedVocabulary === null ? "" : `-${selectedVocabulary}`}${selectedWorkload === null ? "" : `-${selectedWorkload}`}-pricing-n${sampleCount}.json`
     : candidateMode === "mixed"
@@ -66,12 +73,15 @@ const outputPath = path.join(
                             ? "cut-borrowed-pricing.json"
       : "route-pricing.json",
 );
+const outputPath = evidenceLabel === null
+  ? baseOutputPath
+  : baseOutputPath.replace(/\.json$/, `-${evidenceLabel}.json`);
 const artifacts = vocabularyRegistry
   .filter(({ id }) => selectedVocabulary === null || id === selectedVocabulary)
   .map(({ id }) => prepareVocabularyArtifact(id));
 if (artifacts.length === 0) throw new TypeError(`unknown vocabulary ${selectedVocabulary}`);
 const compositionModes = new Set(["direct-borrowed", "cut-direct", "cut-borrowed"]);
-const decisionWorkloads = candidateMode === "dirty-batch"
+const decisionWorkloads = candidateMode === "dirty-batch" || candidateMode === "dirty-batch-composed"
   ? new Set(["chinese", "long-document"])
   : candidateMode === "utf16-output" || candidateMode === "string-builtins"
     ? new Set(["chinese", "long-document"])
@@ -85,17 +95,17 @@ const workloads = loadCorpus().filter(({ id }) =>
   (selectedWorkload === null || id === selectedWorkload)
 );
 if (workloads.length === 0) throw new TypeError(`unknown workload ${selectedWorkload}`);
-const workloadsFor = (artifact) => candidateMode !== "dirty-batch"
+const workloadsFor = (artifact) => candidateMode !== "dirty-batch" && candidateMode !== "dirty-batch-composed"
   ? workloads
   : workloads.filter(({ id }) =>
       artifact.vocabulary === "gpt2" ? id === "long-document" : id === "chinese"
     );
 const regimes = candidateMode === "memo"
   ? ["repeated", "fresh"]
-  : candidateMode === "dirty-batch" || candidateMode === "string-builtins" || candidateMode === "direct-scratch" || candidateMode === "clean-unroll" || candidateMode === "latin1-native" || candidateMode === "borrowed-output" || candidateMode === "utf16-output" || compositionModes.has(candidateMode)
+  : candidateMode === "dirty-batch" || candidateMode === "dirty-batch-composed" || candidateMode === "string-builtins" || candidateMode === "direct-scratch" || candidateMode === "clean-unroll" || candidateMode === "latin1-native" || candidateMode === "borrowed-output" || candidateMode === "utf16-output" || compositionModes.has(candidateMode)
     ? ["fresh"]
     : ["repeated"];
-const targetBytesPerSample = candidateMode === "dirty-batch" || candidateMode === "string-builtins" || candidateMode === "latin1-native" || candidateMode === "borrowed-output" || candidateMode === "utf16-output" || compositionModes.has(candidateMode)
+const targetBytesPerSample = candidateMode === "dirty-batch" || candidateMode === "dirty-batch-composed" || candidateMode === "string-builtins" || candidateMode === "latin1-native" || candidateMode === "borrowed-output" || candidateMode === "utf16-output" || compositionModes.has(candidateMode)
   ? 16_777_216
   : 1_048_576;
 
@@ -127,7 +137,7 @@ async function measureNode(containerRegime, artifact) {
                           ? { decodeMemo: "off", decodeDirectScratch: "off", decodeBorrowedOutput: "off" }
                           : candidateMode === "cut-direct" || candidateMode === "cut-borrowed"
                             ? { decodeMemo: "off", decodeDirectScratch: "on", decodeBorrowedOutput: "on" }
-            : candidateMode === "dirty-batch"
+            : candidateMode === "dirty-batch" || candidateMode === "dirty-batch-composed"
               ? { decodeMemo: "off", decodeDirtyRunBatch: "off" }
               : candidateMode === "string-builtins"
                 ? { decodeMemo: "off", decodeStringBuiltins: "off" }
@@ -171,7 +181,7 @@ async function measureNode(containerRegime, artifact) {
                               ? { decodeMemo: "off", decodeDirectScratch: "off", decodeBorrowedOutput: "on" }
                               : candidateMode === "cut-borrowed"
                                 ? { decodeMemo: "off", decodeDirectScratch: "on", decodeBorrowedOutput: "off" }
-              : candidateMode === "dirty-batch"
+              : candidateMode === "dirty-batch" || candidateMode === "dirty-batch-composed"
                 ? { decodeMemo: "off", decodeDirtyRunBatch: "on" }
                 : candidateMode === "string-builtins"
                   ? {
