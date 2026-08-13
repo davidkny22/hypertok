@@ -60,6 +60,7 @@ pub enum ReadError {
     },
     UnsortedBase,
     SpecialBytesMismatch(u32),
+    EmptySpecial(u32),
     UnknownPretokStep(u8),
     UnknownNamedPattern(u32),
     InvalidPretokFlags(u8),
@@ -168,6 +169,7 @@ impl fmt::Display for ReadError {
                 formatter,
                 "SPECIALS bytes disagree with arena bytes for id {id}"
             ),
+            Self::EmptySpecial(id) => write!(formatter, "SPECIALS entry {id} has empty bytes"),
             Self::UnknownPretokStep(kind) => {
                 write!(formatter, "PRETOK step kind {kind} is unknown")
             }

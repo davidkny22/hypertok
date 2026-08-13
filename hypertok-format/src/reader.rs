@@ -388,6 +388,9 @@ impl<'a> ValidatedFile<'a> {
             let id = read_u32(&fixed[..4]);
             let byte_len = read_u32(&fixed[4..]) as usize;
             validate_id(id, self.header.vocab_size, SectionId::Specials)?;
+            if byte_len == 0 {
+                return Err(ReadError::EmptySpecial(id));
+            }
             if !ids.insert(id) {
                 return Err(ReadError::DuplicateSectionEntry {
                     section: SectionId::Specials.value(),

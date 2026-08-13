@@ -760,6 +760,11 @@ fn validate_sentencepiece_added_tokens(
         if !token.special {
             return Err(JsonConversionError::Unsupported("non-special added token"));
         }
+        if token.content.is_empty() {
+            return Err(JsonConversionError::InvalidVocabulary(
+                "special token bytes must not be empty",
+            ));
+        }
         if tokens.get(token.id as usize).and_then(|value| *value) != Some(token.content.as_str()) {
             return Err(JsonConversionError::InvalidId(token.id));
         }

@@ -330,6 +330,13 @@ fn run_checklist(fixtures: &Fixtures) {
         HtkLoadError::Format(ReadError::SectionLengthMismatch(id)) if *id == SectionId::Specials.value()
     );
     case!(
+        "reader_rejects_empty_special_entry",
+        mutate_section(&fixtures.byte, SectionId::Specials, |section| put_u32(
+            section, 8, 0
+        )),
+        HtkLoadError::Format(ReadError::EmptySpecial(258))
+    );
+    case!(
         "specials_bytes_disagree_with_arena",
         mutate_section(&fixtures.byte, SectionId::Specials, |section| section
             [12] ^= 1),

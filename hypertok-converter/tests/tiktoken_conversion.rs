@@ -82,6 +82,25 @@ fn no_output_value_exists_after_source_failures() {
     ));
 }
 
+#[test]
+fn tiktoken_converter_rejects_empty_special_bytes() {
+    let source = byte_rank_source();
+    let empty_specials = [SpecialToken {
+        bytes: b"",
+        id: 260,
+        flags: 0,
+    }];
+    let definition = TiktokenDefinition {
+        pattern: NamedPattern::O200kBase,
+        special_tokens: &empty_specials,
+    };
+
+    assert!(matches!(
+        convert_tiktoken(&source, Sha256::digest(&source).into(), &definition),
+        Err(ConvertError::EmptySpecialBytes)
+    ));
+}
+
 fn definition() -> TiktokenDefinition<'static> {
     TiktokenDefinition {
         pattern: NamedPattern::O200kBase,

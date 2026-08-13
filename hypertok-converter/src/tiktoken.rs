@@ -49,6 +49,7 @@ pub enum ConvertError {
     DuplicateRank(u32),
     DuplicateSpecialId(u32),
     DuplicateSpecialBytes,
+    EmptySpecialBytes,
     SpecialIdCollision(u32),
     MissingByte(u8),
     VocabTooLarge(u32),
@@ -92,6 +93,7 @@ impl fmt::Display for ConvertError {
             Self::DuplicateSpecialBytes => {
                 formatter.write_str("two special tokens have identical bytes")
             }
+            Self::EmptySpecialBytes => formatter.write_str("special token bytes must not be empty"),
             Self::SpecialIdCollision(id) => write!(
                 formatter,
                 "special token id {id} collides with a mergeable rank"
@@ -295,6 +297,9 @@ fn validate_specials(
             .is_ok()
         {
             return Err(ConvertError::SpecialIdCollision(special.id));
+        }
+        if special.bytes.is_empty() {
+            return Err(ConvertError::EmptySpecialBytes);
         }
         if !ids.insert(special.id) {
             return Err(ConvertError::DuplicateSpecialId(special.id));

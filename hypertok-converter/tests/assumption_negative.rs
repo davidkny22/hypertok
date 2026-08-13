@@ -199,6 +199,32 @@ fn known_unrepresentable_behavior_produces_no_conversion() {
 }
 
 #[test]
+fn tokenizer_json_rejects_empty_sentencepiece_added_token() {
+    let mut value = control();
+    value["model"]["vocab"][""] = json!(257);
+    value["added_tokens"]
+        .as_array_mut()
+        .expect("added token array")
+        .push(json!({
+            "id": 257,
+            "content": "",
+            "single_word": false,
+            "lstrip": false,
+            "rstrip": false,
+            "normalized": false,
+            "special": true
+        }));
+    let source = serialize(value);
+
+    assert!(matches!(
+        convert_tokenizer_json(&source, Sha256::digest(&source).into()),
+        Err(JsonConversionError::InvalidVocabulary(
+            "special token bytes must not be empty"
+        ))
+    ));
+}
+
+#[test]
 fn per_token_priority_assumption_has_a_detectable_counterexample() {
     let merges = [
         Merge::new("a", "b", "ab"),
