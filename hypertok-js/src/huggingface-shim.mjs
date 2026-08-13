@@ -179,10 +179,16 @@ export function createHuggingFaceShim(
       return encodeWith(text, options, policy, true);
     },
     decode(ids, options = {}) {
+      const validId = (id) =>
+        (typeof id === "bigint" && id >= 0n && id <= 0xffff_ffffn) ||
+        (typeof id === "number" &&
+          Number.isInteger(id) &&
+          id >= 0 &&
+          id <= 0xffff_ffff);
       if (
         !Array.isArray(ids) ||
         ids.length === 0 ||
-        (!Number.isInteger(ids[0]) && typeof ids[0] !== "bigint")
+        !ids.every(validId)
       ) {
         throw new Error("token_ids must be a non-empty array of integers.");
       }
