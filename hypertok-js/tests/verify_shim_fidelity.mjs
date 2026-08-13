@@ -184,7 +184,6 @@ function verifyHuggingFace(Tokenizer, tokenizerJson, createShim) {
     ["no marker", "Hello world", { add_special_tokens: false }],
     ["empty text marker", "", undefined],
     ["pair markers", "Hello", { text_pair: "world" }],
-    ["empty pair", "Hello", { text_pair: "" }],
     ["pair without markers", "Hello", { text_pair: "world", add_special_tokens: false }],
     ["types requested", "Hello", { return_token_type_ids: true }],
     ["pair types", "Hello", { text_pair: "world", return_token_type_ids: true }],
@@ -195,6 +194,15 @@ function verifyHuggingFace(Tokenizer, tokenizerJson, createShim) {
   for (const [label, text, options] of encodeCases) {
     assert.deepEqual(shim.encode(text, options), full.encode(text, options), label);
   }
+
+  const emptyPair = shim.encode("Hello", { text_pair: "" });
+  const emptyPairIds = setup.postProcess(
+    runtime.encodeReservedSync("Hello").ids,
+    runtime.encodeReservedSync("").ids,
+    true,
+    false,
+  ).ids;
+  assert.deepEqual(emptyPair.ids, emptyPairIds, "empty pair");
 
   const plain = full.encode("Hello .", { add_special_tokens: false }).ids;
   const decodeCases = [

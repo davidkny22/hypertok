@@ -148,7 +148,7 @@ export function createHuggingFaceShim(
   const encodeWith = (text, options, policy, detailed) => {
     const normalized = encodeOptions(options);
     const first = core.encodeReservedSync(text, policy);
-    const pairText = normalized.text_pair || null;
+    const pairText = normalized.text_pair ?? null;
     const second = pairText === null ? null : core.encodeReservedSync(pairText, policy);
     const processed = processIds(
       postProcess,

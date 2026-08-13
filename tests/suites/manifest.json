@@ -133,7 +133,8 @@
         "tests/runtime-decode-wiring.test.mjs",
         "tests/tier-runtime-lifecycle.test.mjs",
         "tests/public-decode-config.test.mjs",
-        "tests/huggingface-lazy-shim.test.mjs"
+        "tests/huggingface-lazy-shim.test.mjs",
+        "tests/huggingface-empty-pair.test.mjs"
       ]
     },
     {
