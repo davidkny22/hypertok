@@ -660,6 +660,18 @@ export function createDecodeTable(core, options = {}) {
     let clean = prepared.prefix;
     let dirtyBytes = "";
     let dirtyStart = 0;
+    let dirtyIds = 0;
+    const sampled = sampleDirty(ids);
+    if (sampled.unknown) {
+      unknownFallbackCalls += 1;
+      return fallback(ids);
+    }
+    if (sampled.sampledDirty / sampled.sampleCount > maxMixedDirtyDensity) {
+      dirtyFallbackCalls += 1;
+      sampledFallbackCalls += 1;
+      mixedDensityFallbackCalls += 1;
+      return fallback(ids);
+    }
 
     const flushClean = () => {
       if (clean.length === 0) return;
@@ -693,6 +705,19 @@ export function createDecodeTable(core, options = {}) {
       }
       flushClean();
       if (dirtyBytes.length === 0) dirtyStart = index;
+      dirtyIds += 1;
+      const dirtyDensity = dirtyIds / ids.length;
+      const currentRuns = runs.length + 1;
+      const mixedRouteScore = (dirtyIds + currentRuns * mixedRunPenalty) / ids.length;
+      if (mixedRouteScore > maxMixedDirtyDensity) {
+        dirtyFallbackCalls += 1;
+        if (dirtyDensity > maxMixedDirtyDensity) {
+          mixedDensityFallbackCalls += 1;
+        } else {
+          mixedRunFallbackCalls += 1;
+        }
+        return fallback(ids);
+      }
       const value = byteTable.byteString(id);
       if (typeof value !== "string") {
         throw new Error("dirty byte-string table did not converge");
@@ -705,7 +730,11 @@ export function createDecodeTable(core, options = {}) {
     if (runs.length === 0) {
       tableCalls += 1;
       runStitcherCalls += 1;
-      return pieces.join("");
+      return pieces.length === 0 ? "" : pieces[0];
+    }
+    if (pieces.length === 1) {
+      runStitcherCalls += 1;
+      return fallback(ids);
     }
     const decodedRuns = decodeDirtyRuns(ids, runs);
     let output = "";
