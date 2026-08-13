@@ -72,6 +72,7 @@ test("public automatic decode reaches the routed table and sparse mixed path", a
     assert.equal(stats.directScratch, true);
     assert.equal(stats.leanDispatch, false);
     assert.equal(stats.memo, true);
+    assert.equal(stats.runStitcher, true);
     assert.ok(stats.tableState.tableCalls > 0);
     assert.ok(stats.tableState.mixedCalls > 0);
     assert.ok(stats.tableState.byteTableState.runDecoderCalls > 0);
@@ -370,8 +371,8 @@ test("public automatic dirty-run batching preserves an explicit off refuge", asy
   }
 });
 
-test("public run stitcher removes segment routing while preserving an off refuge", async () => {
-  const stitched = await loaded({ decodeMemo: "off", decodeRunStitcher: "on" });
+test("public automatic run stitcher preserves an explicit off refuge", async () => {
+  const stitched = await loaded({ decodeMemo: "off" });
   const refuge = await loaded({ decodeMemo: "off", decodeRunStitcher: "off" });
   try {
     const byteIds = singleByteIds(stitched.handle, [0x41, 0x82, 0xa9, 0xac, 0xc3, 0xe2]);

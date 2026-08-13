@@ -32,7 +32,7 @@ const runtimeDefinitions = Object.freeze([
   Object.freeze(["decodeDirectScratch", true, "auto"]),
   Object.freeze(["decodeMemo", true, "auto"]),
   Object.freeze(["decodeDirtyRunBatch", true, "auto"]),
-  Object.freeze(["decodeRunStitcher", false, "off"]),
+  Object.freeze(["decodeRunStitcher", true, "auto"]),
   Object.freeze(["decodeStringBuiltins", false, "off"]),
 ]);
 

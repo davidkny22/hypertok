@@ -29,7 +29,7 @@ assert.deepEqual(automatic.decode, {
   directScratch: true,
   memo: true,
   dirtyRunBatch: true,
-  runStitcher: false,
+  runStitcher: true,
   stringBuiltins: false,
   raw: false,
 });
@@ -214,6 +214,12 @@ assert.equal(runStitcherOn.states.decodeRunStitcher, "on");
 assert.equal(runStitcherOn.decode.runStitcher, true);
 assert.deepEqual(runStitcherOn.overrides, [
   { path: "hypertok.optimizations.decodeRunStitcher", value: "on" },
+]);
+const runStitcherOff = resolveOptimizationConfig({ decodeRunStitcher: "off" });
+assert.equal(runStitcherOff.states.decodeRunStitcher, "off");
+assert.equal(runStitcherOff.decode.runStitcher, false);
+assert.deepEqual(runStitcherOff.overrides, [
+  { path: "hypertok.optimizations.decodeRunStitcher", value: "off" },
 ]);
 assert.equal(
   resolveOptimizationConfig({ decodeDirtyRunBatch: "off" }).decode.runStitcher,
