@@ -95,6 +95,7 @@ test("auto decode reaches table, mixed runs, and the assembly refuge", async () 
   assert.equal(tokenizer.decodeStats().leanDispatch, false);
   assert.equal(tokenizer.decodeStats().directScratch, true);
   assert.equal(tokenizer.decodeStats().memo, true);
+  assert.equal(tokenizer.decodeStats().runStitcher, true);
   assert.equal(tokenizer.decodeStats().tableState.mixedCalls, 3);
   assert.equal(tokenizer.decodeStats().tableState.mixedRunFallbackCalls, 1);
   assert.ok(tokenizer.decodeStats().tableState.runCacheState.hits > 0);
@@ -160,6 +161,7 @@ test("explicit native Latin-1 decode routes dirty-dense bytes without assembly",
     decodeMemo: "off",
     decodeLatin1Native: "on",
     decodeDirectScratch: "off",
+    decodeRunStitcher: "off",
   });
   assert.equal(tokenizer.decode([2, 3]), "\u20ac");
   assert.equal(tokenizer.decode([2]), "\ufffd");
@@ -176,6 +178,7 @@ test("explicit portable Latin-1 decode routes dirty-dense bytes without assembly
     decodeMemo: "off",
     decodeLatin1Portable: "on",
     decodeDirectScratch: "off",
+    decodeRunStitcher: "off",
   });
   assert.equal(tokenizer.decode([2, 3]), "\u20ac");
   assert.equal(tokenizer.decode([2]), "\ufffd");
